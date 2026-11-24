@@ -75,8 +75,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [showInviteInput, setShowInviteInput] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
 
-  // Audio mute toggle
+  // Audio: SFX mute + separate soft BGM (เพลงลอยกระทง) toggle
   const [soundMuted, setSoundMuted] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(true);
 
   // Clean lightweight personal wish input & tactile Krathong Builder tray
   const [wishDraft, setWishDraft] = useState("");
@@ -155,6 +156,20 @@ export function RoomClient({ roomId }: { roomId: string }) {
     }
   }, [roomId]);
 
+  // iOS/Android: unlock AudioContext + HTMLAudio on first user gesture
+  useEffect(() => {
+    soundEngine.bindGestureUnlock();
+    try {
+      const savedMusic = window.localStorage.getItem("lk_music_enabled");
+      if (savedMusic === "0") {
+        setMusicEnabled(false);
+        soundEngine.setMusicEnabled(false);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   // Periodically prune expired visual events cleanly
   useEffect(() => {
     const prune = setInterval(() => {
@@ -173,12 +188,24 @@ export function RoomClient({ roomId }: { roomId: string }) {
   }, []);
 
   const toggleSound = () => {
+    soundEngine.unlock();
     const nextMuted = !soundMuted;
     setSoundMuted(nextMuted);
     soundEngine.setMuted(nextMuted);
     if (!nextMuted) {
-      soundEngine.unlock();
       soundEngine.playHeartPop(false);
+    }
+  };
+
+  const toggleMusic = () => {
+    soundEngine.unlock();
+    const next = !musicEnabled;
+    setMusicEnabled(next);
+    soundEngine.setMusicEnabled(next);
+    try {
+      window.localStorage.setItem("lk_music_enabled", next ? "1" : "0");
+    } catch {
+      // Ignore
     }
   };
 
@@ -1132,12 +1159,52 @@ export function RoomClient({ roomId }: { roomId: string }) {
               </div>
             </div>
 
-            {/* Sound Mute / Unmute Button */}
+            {/* BGM (เพลงลอยกระทง) toggle — separate from SFX mute */}
+            <button
+              type="button"
+              onClick={toggleMusic}
+              aria-label={musicEnabled ? "ปิดเพลงพื้นหลัง" : "เปิดเพลงลอยกระทง"}
+              title={musicEnabled ? "ปิดเพลง" : "เปิดเพลงลอยกระทง"}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/20 bg-[#080f27]/78 text-amber-100 shadow-lg backdrop-blur-md transition hover:border-amber-300/50 active:scale-95"
+            >
+              {musicEnabled ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4.5 w-4.5 text-amber-300"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4.5 w-4.5 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                  <line x1="4" y1="4" x2="20" y2="20" />
+                </svg>
+              )}
+            </button>
+
+            {/* SFX Mute / Unmute Button */}
             <button
               type="button"
               onClick={toggleSound}
               aria-label={soundMuted ? "เปิดเสียงเอฟเฟกต์" : "ปิดเสียงเอฟเฟกต์"}
-              title={soundMuted ? "เปิดเสียง" : "ปิดเสียง"}
+              title={soundMuted ? "เปิดเสียงเอฟเฟกต์" : "ปิดเสียงเอฟเฟกต์"}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/20 bg-[#080f27]/78 text-amber-100 shadow-lg backdrop-blur-md transition hover:border-amber-300/50 active:scale-95"
             >
               {soundMuted ? (
@@ -1500,7 +1567,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
                 </div>
 
                 {/* 4 Vivid Style Cards for Active Tab */}
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                   {builderTab === "base" &&
                     BASE_OPTIONS.map((opt) => {
                       const active = myChoice.baseStyle === opt.id;

@@ -3,6 +3,8 @@ export const BASE_STYLES = [
   "lotus_petal",
   "golden_leaf",
   "moon_crystal",
+  "coconut_husk",
+  "ruby_petal",
 ] as const;
 export type BaseStyle = (typeof BASE_STYLES)[number];
 
@@ -11,6 +13,8 @@ export const FLOWER_STYLES = [
   "marigold_globe",
   "orchid_violet",
   "rose_crimson",
+  "white_lotus_pearl",
+  "chrysanthemum_peach",
 ] as const;
 export type FlowerStyle = (typeof FLOWER_STYLES)[number];
 
@@ -19,6 +23,8 @@ export const CANDLE_STYLES = [
   "rose_gold",
   "moonlight_violet",
   "aurora_blue",
+  "jade_green",
+  "pearl_ivory",
 ] as const;
 export type CandleStyle = (typeof CANDLE_STYLES)[number];
 
@@ -27,6 +33,8 @@ export const ACCENT_STYLES = [
   "mini_garland",
   "moon_star",
   "golden_swan",
+  "twin_ribbon",
+  "lotus_lantern",
 ] as const;
 export type AccentStyle = (typeof ACCENT_STYLES)[number];
 
@@ -96,6 +104,22 @@ export const BASE_OPTIONS: OptionMeta<BaseStyle>[] = [
     swatch: "#38bdf8",
     swatchAccent: "#e0e7ff",
   },
+  {
+    id: "coconut_husk",
+    label: "กะลามะพร้าวอบอุ่น",
+    shortLabel: "กะลามะพร้าว",
+    subtitle: "ฐานกะลามะพร้าวน้ำตาลทองกลิ่นหอมแบบโบราณ",
+    swatch: "#92400e",
+    swatchAccent: "#fcd34d",
+  },
+  {
+    id: "ruby_petal",
+    label: "กลีบทับทิมแดง",
+    shortLabel: "กลีบทับทิม",
+    subtitle: "กลีบแดงทับทิมซ้อนชั้นเปล่งประกายโรแมนติก",
+    swatch: "#9f1239",
+    swatchAccent: "#fda4af",
+  },
 ];
 
 export const FLOWER_OPTIONS: OptionMeta<FlowerStyle>[] = [
@@ -130,6 +154,22 @@ export const FLOWER_OPTIONS: OptionMeta<FlowerStyle>[] = [
     subtitle: "กุหลาบแดงกำมะหยี่แทรกใบทองและไข่มุกประกาย",
     swatch: "#e11d48",
     swatchAccent: "#fbbf24",
+  },
+  {
+    id: "white_lotus_pearl",
+    label: "บัวขาว-ไข่มุก",
+    shortLabel: "บัวขาวมุก",
+    subtitle: "ดอกบัวขาวบริสุทธิ์ประดับไข่มุกและเกสรทอง",
+    swatch: "#f8fafc",
+    swatchAccent: "#fde68a",
+  },
+  {
+    id: "chrysanthemum_peach",
+    label: "เบญจมาศพีช-ส้ม",
+    shortLabel: "เบญจมาศพีช",
+    subtitle: "เบญจมาศกลีบพีชอบอุ่นคู่ส้มแสดริมน้ำ",
+    swatch: "#fb923c",
+    swatchAccent: "#fecdd3",
   },
 ];
 
@@ -166,6 +206,22 @@ export const CANDLE_OPTIONS: OptionMeta<CandleStyle>[] = [
     swatch: "#38bdf8",
     swatchAccent: "#cffafe",
   },
+  {
+    id: "jade_green",
+    label: "เขียวหยก",
+    shortLabel: "เขียวหยก",
+    subtitle: "แสงเทียนเขียวหยกนิ่มคู่ควันธูปอ่อนๆ",
+    swatch: "#34d399",
+    swatchAccent: "#a7f3d0",
+  },
+  {
+    id: "pearl_ivory",
+    label: "ไข่มุกงาช้าง",
+    shortLabel: "ไข่มุกงาช้าง",
+    subtitle: "เทียนขาวมุกเรียบหรูพร้อมปลายธูปแดงอุ่น",
+    swatch: "#f5f5f4",
+    swatchAccent: "#fde68a",
+  },
 ];
 
 export const ACCENT_OPTIONS: OptionMeta<AccentStyle>[] = [
@@ -200,6 +256,22 @@ export const ACCENT_OPTIONS: OptionMeta<AccentStyle>[] = [
     subtitle: "หงส์คู่สีทองโค้งคอประกบเป็นรูปหัวใจสุดหรู",
     swatch: "#fbbf24",
     swatchAccent: "#fffbeb",
+  },
+  {
+    id: "twin_ribbon",
+    label: "ริบบิ้นคู่รัก",
+    shortLabel: "ริบบิ้นคู่",
+    subtitle: "ริบบิ้นไหมชมพู-ทองผูกใจสองดวงไว้ด้วยกัน",
+    swatch: "#fb7185",
+    swatchAccent: "#fde68a",
+  },
+  {
+    id: "lotus_lantern",
+    label: "โคมบัวจิ๋ว",
+    shortLabel: "โคมบัวจิ๋ว",
+    subtitle: "โคมลอยรูปบัวจิ๋วเปล่งแสงนวลกลางกระทง",
+    swatch: "#fbbf24",
+    swatchAccent: "#fda4af",
   },
 ];
 
@@ -249,6 +321,24 @@ export const CANDLE_THEME_VISUALS: Record<CandleStyle, CandleThemeVisual> = {
     lightColor: "#38d9f8",
     waterGlowHex: "#22d3ee",
     auraHex: "#38bdf8",
+  },
+  jade_green: {
+    waxColor: "#6ee7b7",
+    waxEmissive: "#047857",
+    flameOuter: "#34d399",
+    flameInner: "#ecfdf5",
+    lightColor: "#34d399",
+    waterGlowHex: "#10b981",
+    auraHex: "#34d399",
+  },
+  pearl_ivory: {
+    waxColor: "#f5f5f4",
+    waxEmissive: "#a8a29e",
+    flameOuter: "#fde68a",
+    flameInner: "#fffbeb",
+    lightColor: "#fef3c7",
+    waterGlowHex: "#fcd34d",
+    auraHex: "#fde68a",
   },
 };
 
@@ -377,7 +467,7 @@ export function coerceCandleStyle(value: unknown): CandleStyle | null {
 
 export function coerceAccentStyle(value: unknown): AccentStyle | null {
   if (isOneOf(ACCENT_STYLES, value)) return value;
-  if (value === "twin_ribbon") return "mini_garland";
+  if (value === "couple_ribbon") return "twin_ribbon";
   return null;
 }
 
