@@ -1814,10 +1814,18 @@ export function Krathong3D({
     const container = mountRef.current;
     if (!container) return;
 
+    // Temporary high-performance capture mode for smooth story recordings:
+    // ?capture=1 (or localStorage loy_capture_perf=1) → dpr=1, no MSAA.
+    const capturePerf =
+      (typeof window !== "undefined" &&
+        (new URLSearchParams(window.location.search).get("capture") === "1" ||
+          window.localStorage.getItem("loy_capture_perf") === "1")) ||
+      false;
+
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({
-        antialias: true,
+        antialias: !capturePerf,
         alpha: true,
         powerPreference: "high-performance",
         preserveDrawingBuffer: true,
@@ -1827,10 +1835,14 @@ export function Krathong3D({
       return;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const maxDpr = capturePerf ? 1 : 2;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.36;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if (capturePerf) {
+      renderer.domElement.dataset.capturePerf = "1";
+    }
 
     const width = Math.max(container.clientWidth, 300);
     const height = Math.max(container.clientHeight, 260);

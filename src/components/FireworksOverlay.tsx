@@ -95,7 +95,11 @@ export function FireworksOverlay({ items }: FireworksOverlayProps) {
       const parent = canvas.parentElement;
       const w = parent ? parent.clientWidth : window.innerWidth;
       const h = parent ? parent.clientHeight : window.innerHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Match Three.js capture mode (?capture=1 / loy_capture_perf) for steady 30fps stories
+      const capturePerf =
+        new URLSearchParams(window.location.search).get("capture") === "1" ||
+        window.localStorage.getItem("loy_capture_perf") === "1";
+      const dpr = Math.min(window.devicePixelRatio || 1, capturePerf ? 1 : 2);
       canvas.width = Math.max(1, Math.floor(w * dpr));
       canvas.height = Math.max(1, Math.floor(h * dpr));
       canvas.style.width = `${w}px`;
