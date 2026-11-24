@@ -227,6 +227,34 @@ export async function joinRoomWithInvite(
     };
   }
 
+  // Re-bind after session loss (serverless cold start): same nickname in this room
+  // gets a fresh session cookie instead of being kicked to "ห้องไม่ใช่".
+  const nickRows = await sql<
+    Pick<ParticipantRow, "id" | "slot" | "nickname">
+  >(
+    `select id, slot, nickname from participants
+     where room_id = $1 and lower(nickname) = lower($2)
+     limit 1`,
+    [roomId, nickname],
+  );
+  const nickMatch = nickRows[0];
+  if (nickMatch) {
+    const sessionToken = generateSecretToken();
+    const sessionTokenHash = sha256Hex(sessionToken);
+    await sql(
+      `update participants
+       set session_token_hash = $3, last_seen_at = now(), nickname = $4
+       where id = $1 and room_id = $2`,
+      [nickMatch.id, roomId, sessionTokenHash, nickname],
+    );
+    return {
+      ok: true,
+      participantId: nickMatch.id,
+      slot: nickMatch.slot === 2 ? 2 : 1,
+      sessionToken,
+    };
+  }
+
   const existingParticipants = await sql<{ count: string | number }>(
     `select count(*)::int as count from participants where room_id = $1`,
     [roomId],

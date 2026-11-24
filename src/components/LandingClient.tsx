@@ -76,6 +76,12 @@ export function LandingClient() {
             `lk_invite_${data.roomId}`,
             data.inviteSecret,
           );
+          window.localStorage.setItem(
+            `lk_invite_${data.roomId}`,
+            data.inviteSecret,
+          );
+          window.sessionStorage.setItem(`lk_nick_${data.roomId}`, trimmed);
+          window.localStorage.setItem(`lk_nick_${data.roomId}`, trimmed);
           window.localStorage.setItem("loy_last_room_id", data.roomId);
         } catch {
           // Ignore storage errors

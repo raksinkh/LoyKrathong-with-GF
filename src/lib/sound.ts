@@ -1,48 +1,29 @@
 "use client";
 
 /**
- * Web Audio SFX + HTMLAudio background music.
+ * Web Audio SFX synthesizer.
  * Mobile (iOS/Android) browsers suspend AudioContext until a user gesture.
  * unlock() must run inside pointer/touch/click/keydown handlers; it resumes
- * AudioContext, plays a silent buffer, and primes the BGM <audio> element.
+ * AudioContext and plays a silent buffer so firework/lantern SFX work after.
  *
- * BGM source: traditional เพลงลอยกระทง melody (Chao Phraya Thammasakmontri,
- * 1914 — public-domain composition in Thailand). File is an original soft
- * synthesized instrumental arrangement under public/, not a commercial recording.
+ * BGM intentionally omitted: no clearly redistributable เพลงลอยกระทง recording
+ * was found (Ministry of Culture MP3s are copyrighted via Suntaraporn Foundation).
+ * Hook for a user-provided licensed URL later: add HTMLAudio here + a toggle.
  */
-const BGM_SRC_MP3 = "/audio/loy-krathong-melody.mp3";
-const BGM_SRC_OGG = "/audio/loy-krathong-melody.ogg";
-const BGM_VOLUME = 0.22;
 
 class MoonlightSoundEngine {
   private ctx: AudioContext | null = null;
   private muted = false;
-  private musicEnabled = true;
   private unlocked = false;
   private gestureBound = false;
-  private bgm: HTMLAudioElement | null = null;
   private unlockPromise: Promise<void> | null = null;
 
   public isMuted(): boolean {
     return this.muted;
   }
 
-  public isMusicEnabled(): boolean {
-    return this.musicEnabled;
-  }
-
   public setMuted(next: boolean): void {
     this.muted = next;
-  }
-
-  public setMusicEnabled(next: boolean): void {
-    this.musicEnabled = next;
-    if (!this.bgm) return;
-    if (next && this.unlocked) {
-      void this.playBgm();
-    } else {
-      this.bgm.pause();
-    }
   }
 
   /** Install once: unlock on first user gesture (covers iOS/Android autoplay). */
@@ -81,27 +62,6 @@ class MoonlightSoundEngine {
     return this.ctx;
   }
 
-  private ensureBgmElement(): HTMLAudioElement | null {
-    if (typeof window === "undefined") return null;
-    if (this.bgm) return this.bgm;
-    const audio = new Audio();
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = BGM_VOLUME;
-    audio.setAttribute("playsinline", "true");
-    audio.setAttribute("webkit-playsinline", "true");
-    // Prefer mp3 (widest mobile support); ogg as secondary source via canPlayType
-    if (audio.canPlayType("audio/mpeg")) {
-      audio.src = BGM_SRC_MP3;
-    } else if (audio.canPlayType("audio/ogg")) {
-      audio.src = BGM_SRC_OGG;
-    } else {
-      audio.src = BGM_SRC_MP3;
-    }
-    this.bgm = audio;
-    return audio;
-  }
-
   private async resumeContext(ctx: AudioContext): Promise<void> {
     if (ctx.state === "suspended") {
       try {
@@ -125,20 +85,9 @@ class MoonlightSoundEngine {
     }
   }
 
-  private async playBgm(): Promise<void> {
-    const audio = this.ensureBgmElement();
-    if (!audio || !this.musicEnabled) return;
-    audio.volume = BGM_VOLUME;
-    try {
-      await audio.play();
-    } catch {
-      // Autoplay may still block until another gesture; bindGestureUnlock retries
-    }
-  }
-
   /**
    * Call from any user-gesture handler. Safe to call repeatedly.
-   * Unlocks AudioContext (SFX) and primes HTMLAudio (BGM).
+   * Unlocks AudioContext for SFX.
    */
   public unlock(): void {
     if (typeof window === "undefined") return;
@@ -150,30 +99,9 @@ class MoonlightSoundEngine {
         if (ctx) {
           this.kickSilentBuffer(ctx);
           await this.resumeContext(ctx);
-          // Second silent kick after resume helps stubborn iOS sessions
           this.kickSilentBuffer(ctx);
         }
-        this.ensureBgmElement();
-        // Prime HTMLAudio inside the gesture stack even if music is off
-        const audio = this.bgm;
-        if (audio) {
-          const keepPlaying = this.musicEnabled;
-          try {
-            audio.volume = keepPlaying ? BGM_VOLUME : 0.001;
-            await audio.play();
-            if (!keepPlaying) {
-              audio.pause();
-              audio.currentTime = 0;
-              audio.volume = BGM_VOLUME;
-            }
-          } catch {
-            // Retry on next gesture
-          }
-        }
         this.unlocked = true;
-        if (this.musicEnabled) {
-          await this.playBgm();
-        }
       })().finally(() => {
         this.unlockPromise = null;
       });

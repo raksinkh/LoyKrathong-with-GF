@@ -75,9 +75,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [showInviteInput, setShowInviteInput] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
 
-  // Audio: SFX mute + separate soft BGM (เพลงลอยกระทง) toggle
+  // Audio mute toggle (SFX only — no BGM until a licensed track is provided)
   const [soundMuted, setSoundMuted] = useState(false);
-  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
+  const authFailStreakRef = useRef(0);
+  const hadReadySessionRef = useRef(false);
 
   // Clean lightweight personal wish input & tactile Krathong Builder tray
   const [wishDraft, setWishDraft] = useState("");
@@ -149,25 +151,26 @@ export function RoomClient({ roomId }: { roomId: string }) {
   useEffect(() => {
     setCanNativeShare(typeof navigator !== "undefined" && "share" in navigator);
     try {
-      const saved = window.sessionStorage.getItem(`lk_invite_${roomId}`);
-      if (saved) setStoredInviteSecret(saved);
+      const saved =
+        window.localStorage.getItem(`lk_invite_${roomId}`) ||
+        window.sessionStorage.getItem(`lk_invite_${roomId}`);
+      if (saved) {
+        setStoredInviteSecret(saved);
+        window.localStorage.setItem(`lk_invite_${roomId}`, saved);
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, saved);
+      }
+      if (urlInvite) {
+        window.localStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+      }
     } catch {
       // Ignore private mode errors
     }
-  }, [roomId]);
+  }, [roomId, urlInvite]);
 
-  // iOS/Android: unlock AudioContext + HTMLAudio on first user gesture
+  // iOS/Android: unlock AudioContext on first user gesture
   useEffect(() => {
     soundEngine.bindGestureUnlock();
-    try {
-      const savedMusic = window.localStorage.getItem("lk_music_enabled");
-      if (savedMusic === "0") {
-        setMusicEnabled(false);
-        soundEngine.setMusicEnabled(false);
-      }
-    } catch {
-      // Ignore
-    }
   }, []);
 
   // Periodically prune expired visual events cleanly
@@ -194,18 +197,6 @@ export function RoomClient({ roomId }: { roomId: string }) {
     soundEngine.setMuted(nextMuted);
     if (!nextMuted) {
       soundEngine.playHeartPop(false);
-    }
-  };
-
-  const toggleMusic = () => {
-    soundEngine.unlock();
-    const next = !musicEnabled;
-    setMusicEnabled(next);
-    soundEngine.setMusicEnabled(next);
-    try {
-      window.localStorage.setItem("lk_music_enabled", next ? "1" : "0");
-    } catch {
-      // Ignore
     }
   };
 
@@ -351,12 +342,18 @@ export function RoomClient({ roomId }: { roomId: string }) {
       prevDriftScoreRef.current = next.drift.score;
 
       if (next.participants.length >= 2) {
+        // Keep invite in localStorage for soft-rejoin after cold starts;
+        // only clear the banner/UI secret once partner has joined.
+        setStoredInviteSecret(null);
+      }
+      const me = next.participants.find((p) => p.isSelf);
+      if (me?.nickname) {
         try {
-          window.sessionStorage.removeItem(`lk_invite_${roomId}`);
+          window.sessionStorage.setItem(`lk_nick_${roomId}`, me.nickname);
+          window.localStorage.setItem(`lk_nick_${roomId}`, me.nickname);
         } catch {
           // Ignore
         }
-        setStoredInviteSecret(null);
       }
     },
     [roomId, triggerEventAudioAndHaptics],
@@ -367,6 +364,70 @@ export function RoomClient({ roomId }: { roomId: string }) {
     const t = setTimeout(() => setPartnerEditNotice(null), 2800);
     return () => clearTimeout(t);
   }, [partnerEditNotice]);
+
+  const readStoredInvite = useCallback((): string => {
+    try {
+      return (
+        urlInvite ||
+        window.localStorage.getItem(`lk_invite_${roomId}`) ||
+        window.sessionStorage.getItem(`lk_invite_${roomId}`) ||
+        ""
+      );
+    } catch {
+      return urlInvite || "";
+    }
+  }, [roomId, urlInvite]);
+
+  const readStoredNickname = useCallback((): string => {
+    try {
+      return (
+        window.sessionStorage.getItem(`lk_nick_${roomId}`) ||
+        window.localStorage.getItem(`lk_nick_${roomId}`) ||
+        ""
+      );
+    } catch {
+      return "";
+    }
+  }, [roomId]);
+
+  // Soft rejoin after transient auth loss (e.g. serverless cold start wiping ephemeral DB)
+  const trySoftRejoin = useCallback(async (): Promise<boolean> => {
+    const inviteSecret = readStoredInvite();
+    const nickname = readStoredNickname().trim();
+    if (!nickname || !inviteSecret) return false;
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/join`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({
+          inviteSecret,
+          nickname,
+        }),
+      });
+      if (!res.ok) return false;
+      // Join only sets the cookie; re-fetch room state with the new session.
+      const poll = await fetch(`/api/rooms/${roomId}?_t=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!poll.ok) return false;
+      const data = (await poll.json()) as RoomStateSnapshot;
+      applyServerState(data);
+      setPhase("ready");
+      setReconnectNotice(null);
+      authFailStreakRef.current = 0;
+      hadReadySessionRef.current = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }, [roomId, readStoredInvite, readStoredNickname, applyServerState]);
 
   // Authenticated GET poll (always checks session cookie FIRST before ever showing Join form!)
   const fetchRoomState = useCallback(
@@ -381,7 +442,20 @@ export function RoomClient({ roomId }: { roomId: string }) {
           credentials: "include",
         });
         if (res.status === 401) {
-          setPhase(urlInvite ? "needs_join" : "unauthorized");
+          // Do not immediately kick a mid-session room after firework/lantern use.
+          // PR #1 redeploy made ephemeral PGlite cold-starts more visible; tolerate blips.
+          if (hadReadySessionRef.current || isBackgroundPoll) {
+            authFailStreakRef.current += 1;
+            setReconnectNotice("กำลังเชื่อมต่อห้องใหม่...");
+            const rejoined = await trySoftRejoin();
+            if (rejoined) return true;
+            if (authFailStreakRef.current < 5) {
+              // Keep UI in ready; next poll retries
+              return false;
+            }
+          }
+          setPhase(urlInvite || readStoredInvite() ? "needs_join" : "unauthorized");
+          setReconnectNotice(null);
           return false;
         }
         if (!res.ok) return false;
@@ -390,6 +464,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
           return true;
         }
         applyServerState(data);
+        authFailStreakRef.current = 0;
+        hadReadySessionRef.current = true;
+        setReconnectNotice(null);
         setPhase("ready");
         return true;
       } catch {
@@ -398,7 +475,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
         pollInFlightRef.current = false;
       }
     },
-    [roomId, urlInvite, applyServerState],
+    [roomId, urlInvite, applyServerState, trySoftRejoin, readStoredInvite],
   );
 
   useEffect(() => {
@@ -523,10 +600,22 @@ export function RoomClient({ roomId }: { roomId: string }) {
         return;
       }
 
+      try {
+        window.sessionStorage.setItem(`lk_nick_${roomId}`, trimmed);
+        window.localStorage.setItem(`lk_nick_${roomId}`, trimmed);
+        if (urlInvite) {
+          window.sessionStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+          window.localStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+        }
+      } catch {
+        // Ignore
+      }
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", `/room/${roomId}`);
       }
+      hadReadySessionRef.current = true;
       await fetchRoomState(false);
+      setJoining(false);
     } catch {
       setJoinError("การเชื่อมต่อขัดข้อง กรุณาลองใหม่อีกครั้ง");
       setJoining(false);
@@ -1117,6 +1206,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
 
         {/* CLEAN TOP BAR: PRESENCE + SOUND TOGGLE + INVITE COPY (NO SKY MODE TOGGLE!) */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-30 mx-auto max-w-xl px-3 pt-2.5 sm:px-5 sm:pt-3.5">
+          {reconnectNotice && (
+            <div className="pointer-events-none mb-2 rounded-xl border border-amber-300/40 bg-amber-400/15 px-3 py-1.5 text-center text-[11px] text-amber-100 backdrop-blur-md">
+              {reconnectNotice}
+            </div>
+          )}
           <div className="pointer-events-auto flex items-center gap-2">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border border-amber-200/20 bg-[#080f27]/78 px-3 py-1.5 shadow-lg backdrop-blur-md">
               <div className="flex min-w-0 items-center gap-2">
@@ -1158,46 +1252,6 @@ export function RoomClient({ roomId }: { roomId: string }) {
                 />
               </div>
             </div>
-
-            {/* BGM (เพลงลอยกระทง) toggle — separate from SFX mute */}
-            <button
-              type="button"
-              onClick={toggleMusic}
-              aria-label={musicEnabled ? "ปิดเพลงพื้นหลัง" : "เปิดเพลงลอยกระทง"}
-              title={musicEnabled ? "ปิดเพลง" : "เปิดเพลงลอยกระทง"}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/20 bg-[#080f27]/78 text-amber-100 shadow-lg backdrop-blur-md transition hover:border-amber-300/50 active:scale-95"
-            >
-              {musicEnabled ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4.5 w-4.5 text-amber-300"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-              ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4.5 w-4.5 text-slate-400"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                  <line x1="4" y1="4" x2="20" y2="20" />
-                </svg>
-              )}
-            </button>
 
             {/* SFX Mute / Unmute Button */}
             <button

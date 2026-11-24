@@ -1,12 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { get, put } from "@vercel/blob";
 import pg from "pg";
 
 interface DbGlobals {
   pool?: pg.Pool;
   schemaReady?: Promise<void>;
   local?: Promise<PGlite>;
+  persistTimer?: ReturnType<typeof setTimeout> | null;
+  persistInFlight?: Promise<void> | null;
+  dirty?: boolean;
 }
 
 const globalForDb = globalThis as unknown as {
@@ -14,6 +18,10 @@ const globalForDb = globalThis as unknown as {
 };
 
 const state = (globalForDb.__moonlightKrathongDb ??= {});
+
+/** Private Blob pathname for PGlite dump when DATABASE_URL is absent (Vercel). */
+const PGLITE_BLOB_PATH = "loykrathong/pglite-datadir.tar.gz";
+const PERSIST_DEBOUNCE_MS = 750;
 
 const IDEMPOTENT_SCHEMA_SQL = `
 create table if not exists rooms (
@@ -127,6 +135,93 @@ async function ensureSchema(pool: pg.Pool): Promise<void> {
   await state.schemaReady;
 }
 
+function hasBlobToken(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+}
+
+async function loadDumpFromBlob(): Promise<File | Blob | null> {
+  if (!hasBlobToken()) return null;
+  try {
+    const result = await get(PGLITE_BLOB_PATH, {
+      access: "private",
+      useCache: false,
+    });
+    if (!result?.stream) return null;
+    const buffer = await new Response(result.stream).arrayBuffer();
+    if (buffer.byteLength < 32) return null;
+    return new File([buffer], "pglite-datadir.tar.gz", {
+      type: "application/gzip",
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function persistLocalDb(db: PGlite): Promise<void> {
+  if (!hasBlobToken()) return;
+  try {
+    const dump = await db.dumpDataDir("gzip");
+    await put(PGLITE_BLOB_PATH, dump, {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/gzip",
+      cacheControlMaxAge: 0,
+    });
+    state.dirty = false;
+  } catch {
+    // Keep serving from memory; next mutation will retry persist
+  }
+}
+
+function schedulePersist(db: PGlite): void {
+  if (!hasBlobToken()) return;
+  state.dirty = true;
+  if (state.persistTimer) clearTimeout(state.persistTimer);
+  state.persistTimer = setTimeout(() => {
+    state.persistTimer = null;
+    if (state.persistInFlight) return;
+    state.persistInFlight = persistLocalDb(db)
+      .catch(() => {})
+      .finally(() => {
+        state.persistInFlight = null;
+        if (state.dirty) schedulePersist(db);
+      });
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+async function applyMigrations(db: PGlite): Promise<void> {
+  const migrationsDir = path.join(process.cwd(), "migrations");
+  const files = (await readdir(migrationsDir).catch(() => []))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files) {
+    const migrationSql = await readFile(path.join(migrationsDir, file), "utf8");
+    await db.exec(migrationSql);
+  }
+}
+
+async function startLocal(): Promise<PGlite> {
+  // Prefer restoring a prior dump so serverless cold starts keep rooms.
+  const dump = await loadDumpFromBlob();
+  let db: PGlite;
+  if (dump) {
+    try {
+      db = await PGlite.create({ loadDataDir: dump });
+    } catch {
+      db = await PGlite.create();
+      await applyMigrations(db);
+    }
+  } else {
+    db = await PGlite.create();
+    await applyMigrations(db);
+  }
+
+  // Ensure schema is current even when restoring an older dump
+  await db.exec(IDEMPOTENT_SCHEMA_SQL);
+  return db;
+}
+
 export async function sql<T = Record<string, unknown>>(
   text: string,
   params: unknown[] = [],
@@ -145,18 +240,17 @@ export async function sql<T = Record<string, unknown>>(
   });
   const db = await state.local;
   const result = await db.query<T>(text, params);
-  return result.rows;
-}
 
-async function startLocal(): Promise<PGlite> {
-  const db = new PGlite();
-  const migrationsDir = path.join(process.cwd(), "migrations");
-  const files = (await readdir(migrationsDir).catch(() => []))
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-  for (const file of files) {
-    const migrationSql = await readFile(path.join(migrationsDir, file), "utf8");
-    await db.exec(migrationSql);
+  // Persist after mutations so firework/lantern spam survives instance recycle
+  const trimmed = text.trimStart().toLowerCase();
+  if (
+    trimmed.startsWith("insert") ||
+    trimmed.startsWith("update") ||
+    trimmed.startsWith("delete") ||
+    trimmed.startsWith("with")
+  ) {
+    schedulePersist(db);
   }
-  return db;
+
+  return result.rows;
 }
