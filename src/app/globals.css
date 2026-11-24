@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-noto-thai), var(--font-prompt), system-ui, sans-serif;
+  --font-display: var(--font-prompt), var(--font-noto-thai), system-ui, sans-serif;
+}
+
+html,
+body {
+  background-color: #050816;
+  color: #f8f3e8;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.96;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes waterShimmer {
+  0%,
+  100% {
+    transform: translateX(-6px) scaleX(0.95);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateX(6px) scaleX(1.07);
+    opacity: 0.72;
+  }
+}
+
+@keyframes distantKrathongDrift {
+  0% {
+    transform: translateX(-18px) translateY(0px);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(18px) translateY(-1.5px);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(-18px) translateY(0px);
+    opacity: 0.45;
+  }
+}
+
+@keyframes lanternRiseNear {
+  0% {
+    transform: translate(-50%, -50%) translateY(28px) scale(1.28);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(6px) scale(1.25);
+  }
+  42% {
+    transform: translate(-50%, -50%) translateY(-105px) translateX(var(--wind-sway, 16px)) scale(0.86);
+    opacity: 0.98;
+  }
+  78% {
+    transform: translate(-50%, -50%) translateY(-215px) translateX(calc(var(--wind-sway, 16px) * -0.7)) scale(0.56);
+    opacity: 0.72;
+  }
+  100% {
+    transform: translate(-50%, -50%) translateY(-290px) translateX(8px) scale(0.38);
+    opacity: 0;
+  }
+}
+
+@keyframes lanternRiseMid {
+  0% {
+    transform: translate(-50%, -50%) translateY(20px) scale(1.02);
+    opacity: 0;
+  }
+  9% {
+    opacity: 0.96;
+    transform: translate(-50%, -50%) translateY(2px) scale(1.0);
+  }
+  45% {
+    transform: translate(-50%, -50%) translateY(-96px) translateX(var(--wind-sway, -14px)) scale(0.68);
+    opacity: 0.92;
+  }
+  80% {
+    transform: translate(-50%, -50%) translateY(-195px) translateX(calc(var(--wind-sway, -14px) * -0.65)) scale(0.44);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(-50%, -50%) translateY(-265px) translateX(-6px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes lanternRiseFar {
+  0% {
+    transform: translate(-50%, -50%) translateY(14px) scale(0.76);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.84;
+    transform: translate(-50%, -50%) translateY(0px) scale(0.74);
+  }
+  48% {
+    transform: translate(-50%, -50%) translateY(-86px) translateX(var(--wind-sway, 10px)) scale(0.5);
+    opacity: 0.78;
+  }
+  82% {
+    transform: translate(-50%, -50%) translateY(-172px) translateX(calc(var(--wind-sway, 10px) * -0.6)) scale(0.32);
+    opacity: 0.52;
+  }
+  100% {
+    transform: translate(-50%, -50%) translateY(-235px) translateX(5px) scale(0.24);
+    opacity: 0;
+  }
+}
+
+@keyframes sparkleBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+    opacity: 0;
+  }
+  18% {
+    transform: translate(-50%, -50%) scale(1.05) rotate(14deg);
+    opacity: 1;
+  }
+  65% {
+    transform: translate(-50%, -50%) scale(1.3) rotate(28deg);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.55) rotate(42deg);
+    opacity: 0;
+  }
+}
+
+@keyframes heartFloat {
+  0% {
+    transform: translate(-50%, -50%) translateY(10px) scale(0.45);
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(-14px) scale(1.1);
+  }
+  65% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) translateY(-92px) translateX(var(--heart-drift, 14px)) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateY(-150px) translateX(var(--heart-drift, -10px)) scale(0.6);
+  }
+}
+
+@keyframes heartComboBanner {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  18% {
+    transform: translate(-50%, -50%) scale(1.08);
+    opacity: 1;
+  }
+  76% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes animeRaySpin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.6);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(95deg) scale(1.45);
+  }
+}
+
+@keyframes animePetalExplode {
+  0% {
+    transform: translate(-50%, -50%) translate(0px, 0px) rotate(0deg) scale(0.35);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.92;
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(var(--tx, 120px), var(--ty, -120px)) rotate(var(--rot, 240deg)) scale(1.05);
+    opacity: 0;
+  }
+}
+
+@keyframes confettiPop {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--cx, 40px), var(--cy, 60px)) rotate(var(--crot, 240deg)) scale(0.55);
+    opacity: 0;
+  }
+}
+
+@keyframes holdPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.48),
+      0 0 28px rgba(251, 191, 36, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 14px rgba(251, 191, 36, 0),
+      0 0 42px rgba(251, 191, 36, 0.45);
+  }
+}
+
+.animate-twinkle {
+  animation: twinkle var(--twinkle-dur, 4s) ease-in-out infinite;
+  animation-delay: var(--twinkle-delay, 0s);
+}
+
+.animate-water-shimmer {
+  animation: waterShimmer var(--shimmer-dur, 5.5s) ease-in-out infinite;
+  animation-delay: var(--shimmer-delay, 0s);
+}
+
+.animate-distant-krathong {
+  animation: distantKrathongDrift var(--dk-dur, 18s) ease-in-out infinite;
+  animation-delay: var(--dk-delay, 0s);
+}
+
+.animate-lantern-near {
+  animation: lanternRiseNear 17s ease-out forwards;
+}
+
+.animate-lantern-mid {
+  animation: lanternRiseMid 18.5s ease-out forwards;
+}
+
+.animate-lantern-far {
+  animation: lanternRiseFar 20s ease-out forwards;
+}
+
+.animate-sparkle-burst {
+  animation: sparkleBurst 3.6s ease-out forwards;
+}
+
+.animate-heart-float {
+  animation: heartFloat 4.2s ease-out forwards;
+}
+
+.animate-heart-combo {
+  animation: heartComboBanner 4.2s ease-out forwards;
+}
+
+.animate-anime-rays {
+  animation: animeRaySpin 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-anime-petal {
+  animation: animePetalExplode 1.75s cubic-bezier(0.12, 0.78, 0.24, 1) forwards;
+}
+
+.animate-confetti-pop {
+  animation: confettiPop 0.9s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+}
+
+.animate-hold-pulse {
+  animation: holdPulse 1.8s ease-in-out infinite;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
