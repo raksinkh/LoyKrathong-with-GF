@@ -104,6 +104,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const seenSkyEventIdsRef = useRef<Set<number>>(new Set());
   const initialHydratedRef = useRef(false);
   const lastLaunchTimeRef = useRef<Record<string, number>>({});
+  const selfSlotRef = useRef<1 | 2 | null>(null);
 
   // Fusion & celebration animations
   const [fusionTriggerKey, setFusionTriggerKey] = useState(0);
@@ -216,12 +217,25 @@ export function RoomClient({ roomId }: { roomId: string }) {
         typeof navigator !== "undefined" &&
         "vibrate" in navigator &&
         Boolean(navigator.userActivation?.hasBeenActive);
+
+      // Own launches already play SFX on the tap (required for iOS/Messenger).
+      // Skip duplicate audio when the server echo arrives ~async later.
+      const mySlot = selfSlotRef.current;
+      const launchKind =
+        ev.kind === "heart_combo" ? "heart" : (ev.kind as ClientSkyKind);
+      const lastLaunch = lastLaunchTimeRef.current[launchKind] ?? 0;
+      const isOwnRecent =
+        mySlot != null &&
+        ev.slot === mySlot &&
+        Date.now() - lastLaunch < 1500;
+
       if (ev.kind === "sparkle") {
         setSkyFlashKey((k) => k + 1);
-        soundEngine.playFireworkBurst();
+        if (!isOwnRecent) soundEngine.playFireworkBurst();
       } else if (ev.kind === "lantern") {
-        soundEngine.playLanternChime();
+        if (!isOwnRecent) soundEngine.playLanternChime();
       } else if (ev.kind === "heart_combo") {
+        // Combo can upgrade a local heart — still play the richer sting.
         soundEngine.playHeartPop(true);
         if (canVibrate) {
           try {
@@ -231,7 +245,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
           }
         }
       } else if (ev.kind === "heart") {
-        soundEngine.playHeartPop(false);
+        if (!isOwnRecent) soundEngine.playHeartPop(false);
       }
     },
     [],
@@ -357,6 +371,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
         setStoredInviteSecret(null);
       }
       const me = next.participants.find((p) => p.isSelf);
+      selfSlotRef.current = me?.slot === 2 ? 2 : me?.slot === 1 ? 1 : null;
       if (me?.nickname) {
         try {
           window.sessionStorage.setItem(`lk_nick_${roomId}`, me.nickname);
@@ -778,7 +793,17 @@ export function RoomClient({ roomId }: { roomId: string }) {
       if (now - last < 350) return;
       lastLaunchTimeRef.current[kind] = now;
 
+      // Play on the tap gesture — async fetch responses are too late for iOS/Messenger.
       soundEngine.unlock();
+      if (kind === "sparkle") {
+        setSkyFlashKey((k) => k + 1);
+        soundEngine.playFireworkBurst();
+      } else if (kind === "lantern") {
+        soundEngine.playLanternChime();
+      } else if (kind === "heart") {
+        soundEngine.playHeartPop(false);
+      }
+
       writeEpochRef.current += 1;
       const hue = self?.slot === 2 ? "rose" : "amber";
       const x =
