@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DEFAULT_P1_CHOICE, DEFAULT_P2_CHOICE } from "@/lib/krathong";
+import { soundEngine } from "@/lib/sound";
 import { ChaoPhrayaBackdrop } from "./ChaoPhrayaBackdrop";
 import { Krathong3D } from "./Krathong3D";
 
@@ -15,6 +16,7 @@ export function LandingClient() {
   const [resumeRoomId, setResumeRoomId] = useState<string | null>(null);
 
   useEffect(() => {
+    soundEngine.bindGestureUnlock();
     try {
       const savedId = window.localStorage.getItem("loy_last_room_id");
       if (!savedId || !/^[0-9a-f]{32}$/.test(savedId)) return;
@@ -40,6 +42,7 @@ export function LandingClient() {
       return;
     }
 
+    soundEngine.unlock();
     setSubmitting(true);
     setError(null);
     try {
@@ -73,6 +76,12 @@ export function LandingClient() {
             `lk_invite_${data.roomId}`,
             data.inviteSecret,
           );
+          window.localStorage.setItem(
+            `lk_invite_${data.roomId}`,
+            data.inviteSecret,
+          );
+          window.sessionStorage.setItem(`lk_nick_${data.roomId}`, trimmed);
+          window.localStorage.setItem(`lk_nick_${data.roomId}`, trimmed);
           window.localStorage.setItem("loy_last_room_id", data.roomId);
         } catch {
           // Ignore storage errors

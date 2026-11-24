@@ -75,8 +75,12 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [showInviteInput, setShowInviteInput] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
 
-  // Audio mute toggle
+  // Audio mute toggle (SFX only — no BGM until a licensed track is provided)
   const [soundMuted, setSoundMuted] = useState(false);
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
+  const authFailStreakRef = useRef(0);
+  const hadReadySessionRef = useRef(false);
+  const lastSoftRejoinAtRef = useRef(0);
 
   // Clean lightweight personal wish input & tactile Krathong Builder tray
   const [wishDraft, setWishDraft] = useState("");
@@ -100,6 +104,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const seenSkyEventIdsRef = useRef<Set<number>>(new Set());
   const initialHydratedRef = useRef(false);
   const lastLaunchTimeRef = useRef<Record<string, number>>({});
+  const selfSlotRef = useRef<1 | 2 | null>(null);
 
   // Fusion & celebration animations
   const [fusionTriggerKey, setFusionTriggerKey] = useState(0);
@@ -148,12 +153,36 @@ export function RoomClient({ roomId }: { roomId: string }) {
   useEffect(() => {
     setCanNativeShare(typeof navigator !== "undefined" && "share" in navigator);
     try {
-      const saved = window.sessionStorage.getItem(`lk_invite_${roomId}`);
-      if (saved) setStoredInviteSecret(saved);
+      const saved =
+        window.localStorage.getItem(`lk_invite_${roomId}`) ||
+        window.sessionStorage.getItem(`lk_invite_${roomId}`);
+      if (saved) {
+        setStoredInviteSecret(saved);
+        window.localStorage.setItem(`lk_invite_${roomId}`, saved);
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, saved);
+      }
+      if (urlInvite) {
+        setStoredInviteSecret(urlInvite);
+        window.localStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+      }
+      const savedNick =
+        window.sessionStorage.getItem(`lk_nick_${roomId}`) ||
+        window.localStorage.getItem(`lk_nick_${roomId}`);
+      if (savedNick && !joinNickname) {
+        setJoinNickname(savedNick);
+      }
     } catch {
       // Ignore private mode errors
     }
-  }, [roomId]);
+    // Prefill once per room; joinNickname omitted so typing is not reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/room invite hydrate only
+  }, [roomId, urlInvite]);
+
+  // iOS/Android: unlock AudioContext on first user gesture
+  useEffect(() => {
+    soundEngine.bindGestureUnlock();
+  }, []);
 
   // Periodically prune expired visual events cleanly
   useEffect(() => {
@@ -173,11 +202,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
   }, []);
 
   const toggleSound = () => {
+    soundEngine.unlock();
     const nextMuted = !soundMuted;
     setSoundMuted(nextMuted);
     soundEngine.setMuted(nextMuted);
     if (!nextMuted) {
-      soundEngine.unlock();
       soundEngine.playHeartPop(false);
     }
   };
@@ -188,12 +217,25 @@ export function RoomClient({ roomId }: { roomId: string }) {
         typeof navigator !== "undefined" &&
         "vibrate" in navigator &&
         Boolean(navigator.userActivation?.hasBeenActive);
+
+      // Own launches already play SFX on the tap (required for iOS/Messenger).
+      // Skip duplicate audio when the server echo arrives ~async later.
+      const mySlot = selfSlotRef.current;
+      const launchKind =
+        ev.kind === "heart_combo" ? "heart" : (ev.kind as ClientSkyKind);
+      const lastLaunch = lastLaunchTimeRef.current[launchKind] ?? 0;
+      const isOwnRecent =
+        mySlot != null &&
+        ev.slot === mySlot &&
+        Date.now() - lastLaunch < 1500;
+
       if (ev.kind === "sparkle") {
         setSkyFlashKey((k) => k + 1);
-        soundEngine.playFireworkBurst();
+        if (!isOwnRecent) soundEngine.playFireworkBurst();
       } else if (ev.kind === "lantern") {
-        soundEngine.playLanternChime();
+        if (!isOwnRecent) soundEngine.playLanternChime();
       } else if (ev.kind === "heart_combo") {
+        // Combo can upgrade a local heart — still play the richer sting.
         soundEngine.playHeartPop(true);
         if (canVibrate) {
           try {
@@ -203,7 +245,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
           }
         }
       } else if (ev.kind === "heart") {
-        soundEngine.playHeartPop(false);
+        if (!isOwnRecent) soundEngine.playHeartPop(false);
       }
     },
     [],
@@ -324,12 +366,19 @@ export function RoomClient({ roomId }: { roomId: string }) {
       prevDriftScoreRef.current = next.drift.score;
 
       if (next.participants.length >= 2) {
+        // Keep invite in localStorage for soft-rejoin after cold starts;
+        // only clear the banner/UI secret once partner has joined.
+        setStoredInviteSecret(null);
+      }
+      const me = next.participants.find((p) => p.isSelf);
+      selfSlotRef.current = me?.slot === 2 ? 2 : me?.slot === 1 ? 1 : null;
+      if (me?.nickname) {
         try {
-          window.sessionStorage.removeItem(`lk_invite_${roomId}`);
+          window.sessionStorage.setItem(`lk_nick_${roomId}`, me.nickname);
+          window.localStorage.setItem(`lk_nick_${roomId}`, me.nickname);
         } catch {
           // Ignore
         }
-        setStoredInviteSecret(null);
       }
     },
     [roomId, triggerEventAudioAndHaptics],
@@ -340,6 +389,79 @@ export function RoomClient({ roomId }: { roomId: string }) {
     const t = setTimeout(() => setPartnerEditNotice(null), 2800);
     return () => clearTimeout(t);
   }, [partnerEditNotice]);
+
+  const readStoredInvite = useCallback((): string => {
+    try {
+      return (
+        urlInvite ||
+        window.localStorage.getItem(`lk_invite_${roomId}`) ||
+        window.sessionStorage.getItem(`lk_invite_${roomId}`) ||
+        ""
+      );
+    } catch {
+      return urlInvite || "";
+    }
+  }, [roomId, urlInvite]);
+
+  const readStoredNickname = useCallback((): string => {
+    try {
+      return (
+        window.sessionStorage.getItem(`lk_nick_${roomId}`) ||
+        window.localStorage.getItem(`lk_nick_${roomId}`) ||
+        ""
+      );
+    } catch {
+      return "";
+    }
+  }, [roomId]);
+
+  // Soft rejoin after transient auth loss (e.g. serverless cold start wiping ephemeral DB)
+  const trySoftRejoin = useCallback(async (): Promise<boolean> => {
+    const inviteSecret = readStoredInvite();
+    const nickname = readStoredNickname().trim();
+    if (!nickname || !inviteSecret) return false;
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/join`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({
+          inviteSecret,
+          nickname,
+        }),
+      });
+      if (!res.ok) return false;
+      try {
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.localStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.sessionStorage.setItem(`lk_nick_${roomId}`, nickname);
+        window.localStorage.setItem(`lk_nick_${roomId}`, nickname);
+        setStoredInviteSecret(inviteSecret);
+      } catch {
+        // Ignore
+      }
+      // Join only sets the cookie; re-fetch room state with the new session.
+      const poll = await fetch(`/api/rooms/${roomId}?_t=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!poll.ok) return false;
+      const data = (await poll.json()) as RoomStateSnapshot;
+      applyServerState(data);
+      setPhase("ready");
+      setReconnectNotice(null);
+      authFailStreakRef.current = 0;
+      hadReadySessionRef.current = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }, [roomId, readStoredInvite, readStoredNickname, applyServerState]);
 
   // Authenticated GET poll (always checks session cookie FIRST before ever showing Join form!)
   const fetchRoomState = useCallback(
@@ -354,7 +476,36 @@ export function RoomClient({ roomId }: { roomId: string }) {
           credentials: "include",
         });
         if (res.status === 401) {
-          setPhase(urlInvite ? "needs_join" : "unauthorized");
+          // Mid-session 401s are usually a brief wrong-instance blip. Soft-rejoin
+          // silently; only surface the banner after a sustained streak so normal
+          // use stays quiet (user reported the banner flashing too often).
+          if (hadReadySessionRef.current || isBackgroundPoll) {
+            authFailStreakRef.current += 1;
+            const streak = authFailStreakRef.current;
+            if (streak >= 6) {
+              setReconnectNotice("กำลังเชื่อมต่อห้องใหม่...");
+            }
+            const now = Date.now();
+            const rejoinCooldownMs = 4000;
+            if (
+              streak === 1 ||
+              now - lastSoftRejoinAtRef.current >= rejoinCooldownMs
+            ) {
+              lastSoftRejoinAtRef.current = now;
+              const rejoined = await trySoftRejoin();
+              if (rejoined) return true;
+            }
+            if (streak < 30) {
+              return false;
+            }
+            // Still have invite? Stay ready forever rather than join-gate mid-session.
+            if (readStoredInvite() && readStoredNickname()) {
+              authFailStreakRef.current = 10;
+              return false;
+            }
+          }
+          setPhase(urlInvite || readStoredInvite() ? "needs_join" : "unauthorized");
+          setReconnectNotice(null);
           return false;
         }
         if (!res.ok) return false;
@@ -363,6 +514,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
           return true;
         }
         applyServerState(data);
+        authFailStreakRef.current = 0;
+        hadReadySessionRef.current = true;
+        setReconnectNotice(null);
         setPhase("ready");
         return true;
       } catch {
@@ -371,7 +525,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
         pollInFlightRef.current = false;
       }
     },
-    [roomId, urlInvite, applyServerState],
+    [roomId, urlInvite, applyServerState, trySoftRejoin, readStoredInvite],
   );
 
   useEffect(() => {
@@ -468,6 +622,15 @@ export function RoomClient({ roomId }: { roomId: string }) {
       return;
     }
 
+    // After auth, invite is stripped from the URL — still join with localStorage copy.
+    const inviteSecret = readStoredInvite();
+    if (!inviteSecret) {
+      setJoinError(
+        "ลิงก์เชิญไม่ถูกต้อง กรุณาขอลิงก์ใหม่จากคนพิเศษของคุณ",
+      );
+      return;
+    }
+
     setJoining(true);
     setJoinError(null);
     soundEngine.unlock();
@@ -481,7 +644,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
           "X-Requested-With": "fetch",
         },
         body: JSON.stringify({
-          inviteSecret: urlInvite,
+          inviteSecret,
           nickname: trimmed,
         }),
       });
@@ -496,10 +659,21 @@ export function RoomClient({ roomId }: { roomId: string }) {
         return;
       }
 
+      try {
+        window.sessionStorage.setItem(`lk_nick_${roomId}`, trimmed);
+        window.localStorage.setItem(`lk_nick_${roomId}`, trimmed);
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.localStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        setStoredInviteSecret(inviteSecret);
+      } catch {
+        // Ignore
+      }
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", `/room/${roomId}`);
       }
+      hadReadySessionRef.current = true;
       await fetchRoomState(false);
+      setJoining(false);
     } catch {
       setJoinError("การเชื่อมต่อขัดข้อง กรุณาลองใหม่อีกครั้ง");
       setJoining(false);
@@ -619,7 +793,17 @@ export function RoomClient({ roomId }: { roomId: string }) {
       if (now - last < 350) return;
       lastLaunchTimeRef.current[kind] = now;
 
+      // Play on the tap gesture — async fetch responses are too late for iOS/Messenger.
       soundEngine.unlock();
+      if (kind === "sparkle") {
+        setSkyFlashKey((k) => k + 1);
+        soundEngine.playFireworkBurst();
+      } else if (kind === "lantern") {
+        soundEngine.playLanternChime();
+      } else if (kind === "heart") {
+        soundEngine.playHeartPop(false);
+      }
+
       writeEpochRef.current += 1;
       const hue = self?.slot === 2 ? "rose" : "amber";
       const x =
@@ -1090,6 +1274,11 @@ export function RoomClient({ roomId }: { roomId: string }) {
 
         {/* CLEAN TOP BAR: PRESENCE + SOUND TOGGLE + INVITE COPY (NO SKY MODE TOGGLE!) */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-30 mx-auto max-w-xl px-3 pt-2.5 sm:px-5 sm:pt-3.5">
+          {reconnectNotice && (
+            <div className="pointer-events-none mb-2 rounded-xl border border-amber-300/40 bg-amber-400/15 px-3 py-1.5 text-center text-[11px] text-amber-100 backdrop-blur-md">
+              {reconnectNotice}
+            </div>
+          )}
           <div className="pointer-events-auto flex items-center gap-2">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border border-amber-200/20 bg-[#080f27]/78 px-3 py-1.5 shadow-lg backdrop-blur-md">
               <div className="flex min-w-0 items-center gap-2">
@@ -1132,12 +1321,12 @@ export function RoomClient({ roomId }: { roomId: string }) {
               </div>
             </div>
 
-            {/* Sound Mute / Unmute Button */}
+            {/* SFX Mute / Unmute Button */}
             <button
               type="button"
               onClick={toggleSound}
               aria-label={soundMuted ? "เปิดเสียงเอฟเฟกต์" : "ปิดเสียงเอฟเฟกต์"}
-              title={soundMuted ? "เปิดเสียง" : "ปิดเสียง"}
+              title={soundMuted ? "เปิดเสียงเอฟเฟกต์" : "ปิดเสียงเอฟเฟกต์"}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-200/20 bg-[#080f27]/78 text-amber-100 shadow-lg backdrop-blur-md transition hover:border-amber-300/50 active:scale-95"
             >
               {soundMuted ? (
@@ -1500,7 +1689,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
                 </div>
 
                 {/* 4 Vivid Style Cards for Active Tab */}
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                   {builderTab === "base" &&
                     BASE_OPTIONS.map((opt) => {
                       const active = myChoice.baseStyle === opt.id;

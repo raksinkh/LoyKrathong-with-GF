@@ -1,20 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_Thai, Prompt } from "next/font/google";
 import "./globals.css";
-
-const prompt = Prompt({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-prompt",
-  display: "swap",
-});
-
-const notoSansThai = Noto_Sans_Thai({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-noto-thai",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "ลอยกระทงใต้แสงจันทร์ • ลอยกระทงร่วมกันสองคน",
@@ -36,11 +21,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="th"
-      className={`${prompt.variable} ${notoSansThai.variable} dark`}
-    >
-      <body className="min-h-dvh bg-[#060918] text-[#f8f3e8] antialiased selection:bg-amber-400/30 selection:text-amber-100">
+    <html lang="th" className="dark">
+      <head>
+        {/*
+          Load Thai display fonts via stylesheet links instead of next/font/google.
+          Vercel builds were intermittently failing when Google Fonts fetch returned
+          null during next/font compile (Noto_Sans_Thai / Prompt).
+        */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600&family=Prompt:wght@300;400;500;600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="min-h-dvh bg-[#060918] font-sans text-[#f8f3e8] antialiased selection:bg-amber-400/30 selection:text-amber-100">
         {children}
       </body>
     </html>

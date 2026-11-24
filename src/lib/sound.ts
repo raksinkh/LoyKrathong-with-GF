@@ -1,9 +1,18 @@
 "use client";
 
-// Lightweight Web Audio API sound synthesizer (zero external audio files)
+/**
+ * Web Audio SFX synthesizer (no BGM).
+ * iOS / Messenger in-app browsers keep AudioContext suspended until a real
+ * user-gesture unlock (silent HTMLAudio + resume + silent buffer). Firework
+ * SFX must also be triggered on the tap itself — not only after an async
+ * fetch — or mobile WebViews stay silent.
+ */
+
 class MoonlightSoundEngine {
   private ctx: AudioContext | null = null;
   private muted = false;
+  private gestureBound = false;
+  private silentEl: HTMLAudioElement | null = null;
 
   public isMuted(): boolean {
     return this.muted;
@@ -13,8 +22,53 @@ class MoonlightSoundEngine {
     this.muted = next;
   }
 
-  private ensureContext(): AudioContext | null {
-    if (this.muted || typeof window === "undefined") return null;
+  /** Install once: unlock on first user gesture (covers iOS/Android autoplay). */
+  public bindGestureUnlock(): void {
+    if (this.gestureBound || typeof window === "undefined") return;
+    this.gestureBound = true;
+    const events: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "touchstart",
+      "touchend",
+      "mousedown",
+      "keydown",
+      "click",
+    ];
+    const onGesture = () => {
+      this.unlock();
+    };
+    for (const ev of events) {
+      window.addEventListener(ev, onGesture, {
+        capture: true,
+        passive: true,
+      });
+    }
+  }
+
+  /** Tiny silent WAV — unlocks the iOS/Messenger media session like HTMLAudio BGM used to. */
+  private unlockHtmlAudio(): void {
+    if (typeof window === "undefined") return;
+    try {
+      if (!this.silentEl) {
+        // Minimal valid WAV (silence)
+        this.silentEl = new Audio(
+          "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+        );
+        this.silentEl.setAttribute("playsinline", "true");
+        this.silentEl.preload = "auto";
+        this.silentEl.volume = 0.01;
+      }
+      this.silentEl.currentTime = 0;
+      void this.silentEl.play().catch(() => {
+        // Ignore — Web Audio path may still work
+      });
+    } catch {
+      // Ignore
+    }
+  }
+
+  private ensureAudioContext(): AudioContext | null {
+    if (typeof window === "undefined") return null;
     const AudioCtx =
       window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext })
@@ -23,14 +77,50 @@ class MoonlightSoundEngine {
     if (!this.ctx) {
       this.ctx = new AudioCtx();
     }
-    if (this.ctx.state === "suspended") {
-      void this.ctx.resume().catch(() => {});
-    }
     return this.ctx;
   }
 
+  private kickSilentBuffer(ctx: AudioContext): void {
+    try {
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Call from any user-gesture handler. Safe to call repeatedly.
+   * Unlocks HTMLAudio session + AudioContext for firework/lantern SFX.
+   */
   public unlock(): void {
-    this.ensureContext();
+    if (typeof window === "undefined") return;
+    this.bindGestureUnlock();
+    this.unlockHtmlAudio();
+
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return;
+    this.kickSilentBuffer(ctx);
+    if (ctx.state === "suspended") {
+      void ctx.resume().then(() => {
+        this.kickSilentBuffer(ctx);
+      }).catch(() => {});
+    }
+  }
+
+  private ensureContext(): AudioContext | null {
+    if (this.muted || typeof window === "undefined") return null;
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return null;
+    if (ctx.state === "suspended") {
+      // Same as early main: kick resume; caller may still schedule on this ctx.
+      void ctx.resume().catch(() => {});
+      this.kickSilentBuffer(ctx);
+    }
+    return ctx;
   }
 
   public playCollect(): void {
@@ -44,7 +134,7 @@ class MoonlightSoundEngine {
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, t);
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.linearRampToValueAtTime(0.05, t + 0.02);
+      gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.28);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -64,7 +154,7 @@ class MoonlightSoundEngine {
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, now + idx * 0.07);
       gain.gain.setValueAtTime(0.0001, now + idx * 0.07);
-      gain.gain.linearRampToValueAtTime(0.065, now + idx * 0.07 + 0.025);
+      gain.gain.linearRampToValueAtTime(0.1, now + idx * 0.07 + 0.025);
       gain.gain.exponentialRampToValueAtTime(0.0008, now + idx * 0.07 + 0.9);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -87,7 +177,7 @@ class MoonlightSoundEngine {
       const start = now + idx * (combo ? 0.065 : 0.055);
       osc.frequency.setValueAtTime(freq, start);
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(combo ? 0.095 : 0.06, start + 0.02);
+      gain.gain.linearRampToValueAtTime(combo ? 0.12 : 0.09, start + 0.02);
       gain.gain.exponentialRampToValueAtTime(
         0.0008,
         start + (combo ? 1.0 : 0.45),
@@ -104,7 +194,6 @@ class MoonlightSoundEngine {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // 1. Anime energy charge rise (0.0s -> 1.25s)
     const chargeOsc = ctx.createOscillator();
     const chargeGain = ctx.createGain();
     chargeOsc.type = "sine";
@@ -118,7 +207,6 @@ class MoonlightSoundEngine {
     chargeOsc.start(now);
     chargeOsc.stop(now + 1.3);
 
-    // 2. Collision impact burst + warm sub-boom at t = 1.24s
     const impactAt = now + 1.24;
     const boom = ctx.createOscillator();
     const boomGain = ctx.createGain();
@@ -133,7 +221,6 @@ class MoonlightSoundEngine {
     boom.start(impactAt);
     boom.stop(impactAt + 0.45);
 
-    // Shimmer noise whoosh at collision
     const sr = ctx.sampleRate;
     const whooshBuf = ctx.createBuffer(1, Math.floor(sr * 0.45), sr);
     const wd = whooshBuf.getChannelData(0);
@@ -155,7 +242,6 @@ class MoonlightSoundEngine {
     whooshSrc.start(impactAt);
     whooshSrc.stop(impactAt + 0.45);
 
-    // 3. Radiant golden Thai pentatonic chime bloom after collision
     const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
     notes.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
@@ -179,7 +265,6 @@ class MoonlightSoundEngine {
     const now = ctx.currentTime;
     const sr = ctx.sampleRate;
 
-    // 1. Soft rising launch whoosh (0.0s -> 0.34s)
     const whooshLen = Math.floor(sr * 0.36);
     const whooshBuf = ctx.createBuffer(1, whooshLen, sr);
     const wd = whooshBuf.getChannelData(0);
@@ -195,7 +280,7 @@ class MoonlightSoundEngine {
     whooshFilter.frequency.exponentialRampToValueAtTime(2200, now + 0.34);
     whooshFilter.Q.value = 1.6;
     const whooshGain = ctx.createGain();
-    whooshGain.gain.setValueAtTime(0.08, now);
+    whooshGain.gain.setValueAtTime(0.12, now);
     whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
     whooshSrc.connect(whooshFilter);
     whooshFilter.connect(whooshGain);
@@ -203,7 +288,6 @@ class MoonlightSoundEngine {
     whooshSrc.start(now);
     whooshSrc.stop(now + 0.36);
 
-    // 2. Soft resonant distant firework boom at t = 0.34s
     const boomAt = now + 0.34;
     const boomOsc = ctx.createOscillator();
     const boomGain = ctx.createGain();
@@ -211,14 +295,13 @@ class MoonlightSoundEngine {
     boomOsc.frequency.setValueAtTime(145, boomAt);
     boomOsc.frequency.exponentialRampToValueAtTime(42, boomAt + 0.42);
     boomGain.gain.setValueAtTime(0.001, boomAt);
-    boomGain.gain.linearRampToValueAtTime(0.22, boomAt + 0.015);
+    boomGain.gain.linearRampToValueAtTime(0.28, boomAt + 0.015);
     boomGain.gain.exponentialRampToValueAtTime(0.001, boomAt + 0.48);
     boomOsc.connect(boomGain);
     boomGain.connect(ctx.destination);
     boomOsc.start(boomAt);
     boomOsc.stop(boomAt + 0.5);
 
-    // 3. Delicate sparkling chrysanthemum shimmer tail
     const sparkleLen = Math.floor(sr * 0.72);
     const sparkleBuf = ctx.createBuffer(1, sparkleLen, sr);
     const sd = sparkleBuf.getChannelData(0);
@@ -233,7 +316,7 @@ class MoonlightSoundEngine {
     spFilter.type = "highpass";
     spFilter.frequency.value = 2400;
     const spGain = ctx.createGain();
-    spGain.gain.setValueAtTime(0.14, boomAt + 0.02);
+    spGain.gain.setValueAtTime(0.18, boomAt + 0.02);
     spGain.gain.exponentialRampToValueAtTime(0.001, boomAt + 0.74);
     spSrc.connect(spFilter);
     spFilter.connect(spGain);
@@ -253,7 +336,7 @@ class MoonlightSoundEngine {
       const start = now + idx * 0.09;
       osc.frequency.setValueAtTime(freq, start);
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(0.08, start + 0.04);
+      gain.gain.linearRampToValueAtTime(0.1, start + 0.04);
       gain.gain.exponentialRampToValueAtTime(0.0006, start + 2.2);
       osc.connect(gain);
       gain.connect(ctx.destination);

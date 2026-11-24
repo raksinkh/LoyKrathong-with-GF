@@ -308,15 +308,23 @@ function createStarGeometry(outerR = 0.09, innerR = 0.04): THREE.BufferGeometry 
 interface BotanicalAssets {
   bananaLeaf: THREE.BufferGeometry;
   goldenLeaf: THREE.BufferGeometry;
+  coconutLeaf: THREE.BufferGeometry;
   crystalPetal: THREE.BufferGeometry;
   lotusBaseOuter: THREE.BufferGeometry;
   lotusBaseInner: THREE.BufferGeometry;
+  rubyBaseOuter: THREE.BufferGeometry;
+  rubyBaseInner: THREE.BufferGeometry;
   lotusFlowerOuter: THREE.BufferGeometry;
   lotusFlowerMid: THREE.BufferGeometry;
   lotusFlowerInner: THREE.BufferGeometry;
+  whiteLotusOuter: THREE.BufferGeometry;
+  whiteLotusMid: THREE.BufferGeometry;
+  whiteLotusInner: THREE.BufferGeometry;
   lotusBudPetal: THREE.BufferGeometry;
   marigoldPetalOuter: THREE.BufferGeometry;
   marigoldPetalInner: THREE.BufferGeometry;
+  peachChrysOuter: THREE.BufferGeometry;
+  peachChrysInner: THREE.BufferGeometry;
   globeBract: THREE.BufferGeometry;
   rosePetalOuter: THREE.BufferGeometry;
   rosePetalInner: THREE.BufferGeometry;
@@ -336,6 +344,7 @@ interface BotanicalAssets {
   roseMetalMat: THREE.MeshPhysicalMaterial;
   stamenMat: THREE.MeshStandardMaterial;
   jasmineMat: THREE.MeshStandardMaterial;
+  pearlMat: THREE.MeshPhysicalMaterial;
   dispose: () => void;
 }
 
@@ -351,6 +360,12 @@ function createBotanicalAssets(): BotanicalAssets {
     "#f59e0b",
     "#fef08a",
     "#fffbeb",
+  );
+  const coconutLeaf = createFoldedBananaLeafGeometry(
+    "#5c3310",
+    "#92400e",
+    "#d97706",
+    "#fcd34d",
   );
   const crystalPetal = createCrystalPetalGeometry();
   const lotusBaseOuter = createCurvedPetalGeometry(
@@ -370,6 +385,24 @@ function createBotanicalAssets(): BotanicalAssets {
     new THREE.Color("#e13b7f"),
     new THREE.Color("#ff9ec0"),
     new THREE.Color("#fff7fa"),
+  );
+  const rubyBaseOuter = createCurvedPetalGeometry(
+    0.46,
+    0.58,
+    0.13,
+    0.16,
+    new THREE.Color("#7f1d1d"),
+    new THREE.Color("#e11d48"),
+    new THREE.Color("#fecdd3"),
+  );
+  const rubyBaseInner = createCurvedPetalGeometry(
+    0.38,
+    0.5,
+    0.12,
+    0.1,
+    new THREE.Color("#9f1239"),
+    new THREE.Color("#fb7185"),
+    new THREE.Color("#fff1f2"),
   );
 
   // Lotus flower (3 overlapping smooth curved spoon-petal rings)
@@ -438,6 +471,61 @@ function createBotanicalAssets(): BotanicalAssets {
     new THREE.Color("#f59e0b"),
     new THREE.Color("#facc15"),
     new THREE.Color("#fef9c3"),
+    6,
+    8,
+  );
+  const whiteLotusOuter = createCurvedPetalGeometry(
+    0.18,
+    0.26,
+    0.07,
+    0.08,
+    new THREE.Color("#f8fafc"),
+    new THREE.Color("#e2e8f0"),
+    new THREE.Color("#ffffff"),
+    8,
+    10,
+  );
+  const whiteLotusMid = createCurvedPetalGeometry(
+    0.15,
+    0.22,
+    0.065,
+    0.045,
+    new THREE.Color("#ffffff"),
+    new THREE.Color("#f1f5f9"),
+    new THREE.Color("#fef9c3"),
+    8,
+    10,
+  );
+  const whiteLotusInner = createCurvedPetalGeometry(
+    0.11,
+    0.17,
+    0.055,
+    0.015,
+    new THREE.Color("#fffbeb"),
+    new THREE.Color("#fef3c7"),
+    new THREE.Color("#ffffff"),
+    7,
+    9,
+  );
+  const peachChrysOuter = createCurvedPetalGeometry(
+    0.095,
+    0.15,
+    0.045,
+    0.065,
+    new THREE.Color("#ea580c"),
+    new THREE.Color("#fb923c"),
+    new THREE.Color("#fecdd3"),
+    6,
+    8,
+  );
+  const peachChrysInner = createCurvedPetalGeometry(
+    0.075,
+    0.115,
+    0.04,
+    0.03,
+    new THREE.Color("#fb923c"),
+    new THREE.Color("#fdba74"),
+    new THREE.Color("#fff7ed"),
     6,
     8,
   );
@@ -625,18 +713,35 @@ function createBotanicalAssets(): BotanicalAssets {
     roughness: 0.22,
   });
 
+  const pearlMat = new THREE.MeshPhysicalMaterial({
+    color: "#f8fafc",
+    emissive: "#e2e8f0",
+    emissiveIntensity: 0.28,
+    roughness: 0.14,
+    metalness: 0.35,
+    clearcoat: 0.85,
+  });
+
   const geoms = [
     bananaLeaf,
     goldenLeaf,
+    coconutLeaf,
     crystalPetal,
     lotusBaseOuter,
     lotusBaseInner,
+    rubyBaseOuter,
+    rubyBaseInner,
     lotusFlowerOuter,
     lotusFlowerMid,
     lotusFlowerInner,
+    whiteLotusOuter,
+    whiteLotusMid,
+    whiteLotusInner,
     lotusBudPetal,
     marigoldPetalOuter,
     marigoldPetalInner,
+    peachChrysOuter,
+    peachChrysInner,
     globeBract,
     rosePetalOuter,
     rosePetalInner,
@@ -658,20 +763,29 @@ function createBotanicalAssets(): BotanicalAssets {
     roseMetalMat,
     stamenMat,
     jasmineMat,
+    pearlMat,
   ];
 
   return {
     bananaLeaf,
     goldenLeaf,
+    coconutLeaf,
     crystalPetal,
     lotusBaseOuter,
     lotusBaseInner,
+    rubyBaseOuter,
+    rubyBaseInner,
     lotusFlowerOuter,
     lotusFlowerMid,
     lotusFlowerInner,
+    whiteLotusOuter,
+    whiteLotusMid,
+    whiteLotusInner,
     lotusBudPetal,
     marigoldPetalOuter,
     marigoldPetalInner,
+    peachChrysOuter,
+    peachChrysInner,
     globeBract,
     rosePetalOuter,
     rosePetalInner,
@@ -691,6 +805,7 @@ function createBotanicalAssets(): BotanicalAssets {
     roseMetalMat,
     stamenMat,
     jasmineMat,
+    pearlMat,
     dispose: () => {
       geoms.forEach((g) => g.dispose());
       mats.forEach((m) => m.dispose());
@@ -787,6 +902,75 @@ function buildJasmineFlower(assets: BotanicalAssets): THREE.Group {
   );
   core.position.y = 0.015;
   g.add(core);
+  return g;
+}
+
+function buildWhiteLotusBloom(assets: BotanicalAssets, scale = 1): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const p = new THREE.Mesh(assets.whiteLotusOuter, assets.vertexMatGlossy);
+    p.rotation.order = "YXZ";
+    p.rotation.y = a;
+    p.rotation.x = 1.0;
+    g.add(p);
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = ((i + 0.5) / 6) * Math.PI * 2;
+    const p = new THREE.Mesh(assets.whiteLotusMid, assets.vertexMatGlossy);
+    p.rotation.order = "YXZ";
+    p.rotation.y = a;
+    p.rotation.x = 0.66;
+    p.position.y = 0.02;
+    g.add(p);
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const p = new THREE.Mesh(assets.whiteLotusInner, assets.vertexMatGlossy);
+    p.rotation.order = "YXZ";
+    p.rotation.y = a;
+    p.rotation.x = 0.34;
+    p.position.y = 0.035;
+    g.add(p);
+  }
+  const pod = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 10, 8),
+    assets.stamenMat,
+  );
+  pod.scale.set(1, 0.65, 1);
+  pod.position.y = 0.055;
+  g.add(pod);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+function buildPeachChrysanthemum(assets: BotanicalAssets, scale = 1): THREE.Group {
+  const g = new THREE.Group();
+  const layers = [
+    { count: 11, tilt: 1.2, y: 0.01, geom: assets.peachChrysOuter, sc: 1.06 },
+    { count: 9, tilt: 0.88, y: 0.04, geom: assets.peachChrysOuter, sc: 0.94 },
+    { count: 7, tilt: 0.55, y: 0.07, geom: assets.peachChrysInner, sc: 0.86 },
+    { count: 5, tilt: 0.26, y: 0.095, geom: assets.peachChrysInner, sc: 0.7 },
+  ];
+  for (const layer of layers) {
+    for (let i = 0; i < layer.count; i++) {
+      const a = (i / layer.count) * Math.PI * 2;
+      const p = new THREE.Mesh(layer.geom, assets.vertexMatGlossy);
+      p.rotation.order = "YXZ";
+      p.rotation.y = a;
+      p.rotation.x = layer.tilt;
+      p.position.y = layer.y;
+      p.scale.setScalar(layer.sc);
+      g.add(p);
+    }
+  }
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(0.042, 8, 8),
+    assets.stamenMat,
+  );
+  core.position.y = 0.1;
+  g.add(core);
+  g.scale.setScalar(scale);
   return g;
 }
 
@@ -943,6 +1127,17 @@ function addBaseElement(
     mesh.rotation.x = isInner ? 0.18 : 0.54;
     mesh.scale.setScalar(isInner ? 0.9 : 1.1);
     holder.add(mesh);
+  } else if (style === "coconut_husk") {
+    const mesh = new THREE.Mesh(assets.coconutLeaf, assets.goldLeafMat);
+    mesh.rotation.x = isInner ? 0.22 : 0.58;
+    mesh.scale.setScalar(isInner ? 0.9 : 1.12);
+    holder.add(mesh);
+  } else if (style === "ruby_petal") {
+    const geom = isInner ? assets.rubyBaseInner : assets.rubyBaseOuter;
+    const mesh = new THREE.Mesh(geom, assets.vertexMatGlossy);
+    mesh.rotation.x = isInner ? 0.42 : 0.92;
+    mesh.scale.setScalar(isInner ? 0.95 : 1.08);
+    holder.add(mesh);
   } else {
     // moon_crystal: faceted crystalline sapphire-silver petals
     const mesh = new THREE.Mesh(assets.crystalPetal, assets.crystalMat);
@@ -1040,6 +1235,39 @@ function addFlowerCluster(
       Math.cos(angle + 0.12) * (radius + 0.16),
     );
     parent.add(bead);
+  } else if (style === "white_lotus_pearl") {
+    const bloom = buildWhiteLotusBloom(assets, index % 2 === 0 ? 1.0 : 0.86);
+    bloom.position.set(x, 0.34, z);
+    bloom.rotation.y = angle;
+    bloom.rotation.x = 0.18;
+    parent.add(bloom);
+    for (let j = -1; j <= 1; j++) {
+      const ja = angle + j * 0.13;
+      const pearl = new THREE.Mesh(
+        new THREE.SphereGeometry(0.03, 8, 8),
+        assets.pearlMat,
+      );
+      pearl.position.set(
+        Math.sin(ja) * (radius + 0.16),
+        0.28 + (j === 0 ? 0.02 : 0),
+        Math.cos(ja) * (radius + 0.16),
+      );
+      parent.add(pearl);
+    }
+  } else if (style === "chrysanthemum_peach") {
+    const chrys = buildPeachChrysanthemum(assets, index % 2 === 0 ? 1.05 : 0.9);
+    chrys.position.set(x, 0.34, z);
+    chrys.rotation.y = angle;
+    chrys.rotation.x = 0.2;
+    parent.add(chrys);
+    const jas = buildJasmineFlower(assets);
+    jas.position.set(
+      Math.sin(angle + 0.12) * (radius + 0.15),
+      0.27,
+      Math.cos(angle + 0.12) * (radius + 0.15),
+    );
+    jas.rotation.x = 0.5;
+    parent.add(jas);
   } else {
     // rose_crimson: velvety ruby-crimson spiral roses with gilded gold leaf sprigs & pearls
     const rose = buildSpiralRose(assets, index % 2 === 0 ? 1.08 : 0.88);
@@ -1094,7 +1322,12 @@ function addCandleAndIncense(
     emissive: theme.waxEmissive,
     emissiveIntensity: 0.38,
     roughness: 0.26,
-    metalness: candleStyle === "rose_gold" || candleStyle === "warm_gold" ? 0.22 : 0.1,
+    metalness:
+      candleStyle === "rose_gold" ||
+      candleStyle === "warm_gold" ||
+      candleStyle === "pearl_ivory"
+        ? 0.22
+        : 0.1,
     clearcoat: 0.55,
   });
 
@@ -1295,6 +1528,77 @@ function addCoupleAccent(
     starR.position.set(0.25, 0.7, 0.7);
     starR.scale.setScalar(0.75);
     holder.add(starL, starR);
+  } else if (style === "twin_ribbon") {
+    // Twin silk ribbons (ริบบิ้นคู่รัก) looping into a soft heart bow
+    const ribbonGroup = new THREE.Group();
+    ribbonGroup.position.set(0, 0.48, 0.72);
+    for (const dir of [-1, 1] as const) {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(dir * 0.02, 0.02, 0),
+        new THREE.Vector3(dir * 0.28, 0.16, 0.04),
+        new THREE.Vector3(dir * 0.22, 0.38, 0.02),
+        new THREE.Vector3(dir * 0.06, 0.3, 0),
+        new THREE.Vector3(0, 0.14, 0),
+      ]);
+      const ribbon = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 20, 0.022, 8, false),
+        dir < 0 ? assets.roseMetalMat : assets.goldMetalMat,
+      );
+      ribbonGroup.add(ribbon);
+      const tail = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.02, 0.28, 8),
+        dir < 0 ? assets.roseMetalMat : assets.goldMetalMat,
+      );
+      tail.position.set(dir * 0.12, -0.04, 0.02);
+      tail.rotation.z = dir * 0.45;
+      ribbonGroup.add(tail);
+    }
+    const knot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 10, 10),
+      assets.pearlMat,
+    );
+    knot.position.set(0, 0.12, 0.02);
+    ribbonGroup.add(knot);
+    holder.add(ribbonGroup);
+  } else if (style === "lotus_lantern") {
+    // Mini floating lotus lantern (โคมบัวจิ๋ว) glowing on the front rim
+    const lantern = new THREE.Group();
+    lantern.position.set(0, 0.55, 0.7);
+    const bowl = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      assets.pearlMat,
+    );
+    bowl.rotation.x = Math.PI;
+    bowl.position.y = 0.02;
+    lantern.add(bowl);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const petal = new THREE.Mesh(assets.whiteLotusMid, assets.vertexMatGlossy);
+      petal.rotation.order = "YXZ";
+      petal.rotation.y = a;
+      petal.rotation.x = 0.95;
+      petal.scale.setScalar(0.55);
+      petal.position.y = 0.02;
+      lantern.add(petal);
+    }
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 10, 10),
+      new THREE.MeshBasicMaterial({
+        color: "#fde68a",
+        transparent: true,
+        opacity: 0.85,
+      }),
+    );
+    glow.position.y = 0.08;
+    lantern.add(glow);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.08, 0.012, 8, 16),
+      assets.goldMetalMat,
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.14;
+    lantern.add(ring);
+    holder.add(lantern);
   } else {
     // golden_swan: Twin sculpted golden Thai swans (หงส์คู่ทอง) arching face-to-face into a heart!
     const swanPair = new THREE.Group();
@@ -1362,19 +1666,24 @@ function buildKrathongMesh(
 
   // Core sculpted base disc matching the chosen theme
   const coreColor =
-    primary.baseStyle === "golden_leaf"
+    primary.baseStyle === "golden_leaf" || primary.baseStyle === "coconut_husk"
       ? "#92400e"
       : primary.baseStyle === "lotus_petal"
         ? "#831843"
-        : primary.baseStyle === "moon_crystal"
-          ? "#1e3a8a"
-          : "#165c34";
+        : primary.baseStyle === "ruby_petal"
+          ? "#7f1d1d"
+          : primary.baseStyle === "moon_crystal"
+            ? "#1e3a8a"
+            : "#165c34";
   const coreMat = new THREE.MeshStandardMaterial({
     color: coreColor,
     emissive: coreColor,
     emissiveIntensity: 0.16,
     roughness: 0.52,
-    metalness: primary.baseStyle === "golden_leaf" ? 0.38 : 0.12,
+    metalness:
+      primary.baseStyle === "golden_leaf" || primary.baseStyle === "coconut_husk"
+        ? 0.38
+        : 0.12,
   });
   const core = new THREE.Mesh(
     new THREE.CylinderGeometry(0.96, 0.88, 0.28, 28),
@@ -1383,10 +1692,13 @@ function buildKrathongMesh(
   core.position.y = 0.14;
   group.add(core);
 
-  // Subtle green lotus pad rim beneath lotus base
+  // Subtle green lotus pad rim beneath lotus / ruby bases
   if (
     primary.baseStyle === "lotus_petal" ||
-    (mode === "fused" && secondary?.baseStyle === "lotus_petal")
+    primary.baseStyle === "ruby_petal" ||
+    (mode === "fused" &&
+      (secondary?.baseStyle === "lotus_petal" ||
+        secondary?.baseStyle === "ruby_petal"))
   ) {
     const pad = new THREE.Mesh(
       new THREE.CylinderGeometry(1.36, 1.32, 0.035, 32),
@@ -1426,11 +1738,13 @@ function buildKrathongMesh(
     addBaseElement(group, assets, style, angle, 0.82, true);
   }
 
-  // Shimmering gold trim ring on lotus_petal, golden_leaf, or fused krathong
+  // Shimmering gold trim ring on ornate bases or fused krathong
   if (
     mode === "fused" ||
     primary.baseStyle === "golden_leaf" ||
-    primary.baseStyle === "lotus_petal"
+    primary.baseStyle === "lotus_petal" ||
+    primary.baseStyle === "coconut_husk" ||
+    primary.baseStyle === "ruby_petal"
   ) {
     const braid = new THREE.Mesh(
       new THREE.TorusGeometry(0.97, 0.036, 10, 40),
@@ -1478,9 +1792,12 @@ function buildKrathongMesh(
   const bedColor =
     primary.baseStyle === "moon_crystal"
       ? "#1e3a8a"
-      : primary.baseStyle === "golden_leaf"
+      : primary.baseStyle === "golden_leaf" ||
+          primary.baseStyle === "coconut_husk"
         ? "#78350f"
-        : "#1e6e3e";
+        : primary.baseStyle === "ruby_petal"
+          ? "#7f1d1d"
+          : "#1e6e3e";
   const bed = new THREE.Mesh(
     new THREE.CylinderGeometry(0.68, 0.72, 0.08, 24),
     new THREE.MeshStandardMaterial({

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-noto-thai), var(--font-prompt), system-ui, sans-serif;
-  --font-display: var(--font-prompt), var(--font-noto-thai), system-ui, sans-serif;
+  --font-sans: "Noto Sans Thai", "Prompt", system-ui, sans-serif;
+  --font-display: "Prompt", "Noto Sans Thai", system-ui, sans-serif;
 }
 
 html,
