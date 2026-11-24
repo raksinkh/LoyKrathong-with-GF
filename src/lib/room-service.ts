@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { flushRoomPersist, sql } from "./db";
 import {
+  ensureRoomLocal,
+  publishRoomNow,
+  publishRoomSoon,
+} from "./room-blob-sync";
+import {
   ACCENT_OPTIONS,
   AccentStyle,
   BASE_OPTIONS,
@@ -122,6 +127,8 @@ export async function authenticateRoomRequest(
   if (!rawToken) {
     return null;
   }
+  // Pull shared room so session cookies work across serverless instances.
+  await ensureRoomLocal(roomId);
   const presentedHash = sha256Hex(rawToken);
   const rows = await sql<ParticipantRow>(
     `select id, room_id, slot, nickname, session_token_hash, activity, holding_since, last_seen_at
@@ -174,6 +181,7 @@ export async function createRoomWithCreator(nickname: string): Promise<{
     [participantId, roomId, nickname, sessionTokenHash],
   );
 
+  await publishRoomNow(roomId);
   await flushRoomPersist();
   return { roomId, inviteSecret, participantId, sessionToken };
 }
@@ -197,6 +205,9 @@ export async function joinRoomWithInvite(
   inviteSecret: string,
   nickname: string,
 ): Promise<JoinRoomResult> {
+  // Critical: guest often lands on a different serverless instance than host.
+  await ensureRoomLocal(roomId);
+
   const rooms = await sql<Pick<RoomRow, "id" | "invite_secret_hash">>(
     `select id, invite_secret_hash from rooms where id = $1`,
     [roomId],
@@ -248,6 +259,7 @@ export async function joinRoomWithInvite(
        where id = $1 and room_id = $2`,
       [nickMatch.id, roomId, sessionTokenHash, nickname],
     );
+    await publishRoomNow(roomId);
     await flushRoomPersist();
     return {
       ok: true,
@@ -308,6 +320,7 @@ export async function joinRoomWithInvite(
     [roomId],
   );
 
+  await publishRoomNow(roomId);
   await flushRoomPersist();
   return {
     ok: true,
@@ -828,6 +841,7 @@ export async function updateParticipantChoice(
   if (!state) {
     return { ok: false, status: 404, error: "ไม่พบห้องริมน้ำนี้" };
   }
+  publishRoomSoon(auth.roomId, 200);
   return { ok: true, state };
 }
 
@@ -942,6 +956,7 @@ export async function updateFusionState(
   if (!state) {
     return { ok: false, status: 404, error: "ไม่พบห้องริมน้ำนี้" };
   }
+  publishRoomSoon(auth.roomId, 200);
   return { ok: true, state };
 }
 
@@ -980,6 +995,7 @@ export async function updateParticipantHold(
     );
   }
 
+  publishRoomSoon(auth.roomId, 200);
   return getRoomStateSnapshot(auth.roomId, auth.id, false);
 }
 
@@ -1042,6 +1058,7 @@ export async function addSkyEvent(
     [auth.roomId, MAX_SKY_EVENTS_PER_ROOM],
   );
 
+  publishRoomSoon(auth.roomId, 150);
   return getRoomStateSnapshot(auth.roomId, auth.id, true);
 }
 
@@ -1075,6 +1092,7 @@ export async function startDriftGame(
          where id = $1 and status = 'released'`,
         [auth.roomId, seed, now],
       );
+      publishRoomSoon(auth.roomId, 200);
     }
     return loadRoomStateSnapshot(auth.roomId, auth.id, true);
   });
@@ -1090,6 +1108,7 @@ export async function setDriftSteer(
       `update rooms set ${column} = $2 where id = $1 and drift_status = 'playing'`,
       [auth.roomId, clampSteer(steer)],
     );
+    publishRoomSoon(auth.roomId, 300);
     return loadRoomStateSnapshot(auth.roomId, auth.id, true);
   });
 }
@@ -1131,5 +1150,6 @@ export async function resetRoomForNewKrathong(
     [auth.roomId],
   );
 
+  await publishRoomNow(auth.roomId);
   return getRoomStateSnapshot(auth.roomId, auth.id, true);
 }
