@@ -11,6 +11,10 @@ interface DbGlobals {
   persistTimer?: ReturnType<typeof setTimeout> | null;
   persistInFlight?: Promise<void> | null;
   dirty?: boolean;
+  /** Serialize PGlite queries + dumps so dumpDataDir never races mid-write. */
+  chain?: Promise<unknown>;
+  lastMutationAt?: number;
+  lastPersistAt?: number;
 }
 
 const globalForDb = globalThis as unknown as {
@@ -19,9 +23,22 @@ const globalForDb = globalThis as unknown as {
 
 const state = (globalForDb.__moonlightKrathongDb ??= {});
 
-/** Private Blob pathname for PGlite dump when DATABASE_URL is absent (Vercel). */
+/**
+ * Private Blob pathname for PGlite dump when DATABASE_URL is absent (Vercel).
+ *
+ * Hot-path lesson vs bb0c7bf: dumping on every sky/builder write under burst
+ * contended PGlite (dumpDataDir + concurrent SQL) and multi-instance Blob
+ * restore races → mid-session 401 kicks. Early main stayed spam-safe because
+ * it was pure in-memory with no Blob I/O on the write path.
+ *
+ * Strategy now: keep memory-first like early main for sky/builder spam;
+ * only idle-debounce Blob dumps, plus explicit flush on create/join.
+ */
 const PGLITE_BLOB_PATH = "loykrathong/pglite-datadir.tar.gz";
-const PERSIST_DEBOUNCE_MS = 750;
+/** Wait until writes go quiet before dumping (spam-safe). */
+const PERSIST_IDLE_MS = 12_000;
+/** Never dump more often than this, even if idle flaps. */
+const PERSIST_MIN_INTERVAL_MS = 20_000;
 
 const IDEMPOTENT_SCHEMA_SQL = `
 create table if not exists rooms (
@@ -168,6 +185,16 @@ async function roomCount(db: PGlite): Promise<number> {
   }
 }
 
+function enqueueLocal<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = state.chain ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  state.chain = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 async function persistLocalDb(db: PGlite): Promise<void> {
   if (!hasBlobToken()) return;
   try {
@@ -189,60 +216,71 @@ async function persistLocalDb(db: PGlite): Promise<void> {
       cacheControlMaxAge: 0,
     });
     state.dirty = false;
+    state.lastPersistAt = Date.now();
   } catch {
-    // Keep serving from memory; next mutation will retry persist
+    // Keep serving from memory; next idle window will retry
   }
 }
 
-function schedulePersist(db: PGlite): void {
+function scheduleIdlePersist(db: PGlite): void {
   if (!hasBlobToken()) return;
   state.dirty = true;
+  state.lastMutationAt = Date.now();
   if (state.persistTimer) clearTimeout(state.persistTimer);
   state.persistTimer = setTimeout(() => {
     state.persistTimer = null;
-    void flushPersist(db);
-  }, PERSIST_DEBOUNCE_MS);
+    void maybeIdlePersist(db);
+  }, PERSIST_IDLE_MS);
 }
 
-/** Awaitable flush so join/sky mutations land in Blob before the response returns. */
+async function maybeIdlePersist(db: PGlite): Promise<void> {
+  if (!state.dirty || !hasBlobToken()) return;
+  const now = Date.now();
+  const sinceMutation = now - (state.lastMutationAt ?? 0);
+  const sincePersist = now - (state.lastPersistAt ?? 0);
+  if (sinceMutation < PERSIST_IDLE_MS) {
+    scheduleIdlePersist(db);
+    return;
+  }
+  if (sincePersist < PERSIST_MIN_INTERVAL_MS) {
+    const wait = PERSIST_MIN_INTERVAL_MS - sincePersist;
+    state.persistTimer = setTimeout(() => {
+      state.persistTimer = null;
+      void maybeIdlePersist(db);
+    }, wait);
+    return;
+  }
+  await flushPersist(db);
+}
+
+/** Awaitable flush — create/join only. Serialized with queries. */
 async function flushPersist(db: PGlite): Promise<void> {
   if (!hasBlobToken()) return;
   if (state.persistTimer) {
     clearTimeout(state.persistTimer);
     state.persistTimer = null;
   }
-  if (state.persistInFlight) {
-    await state.persistInFlight;
-    if (state.dirty) {
-      state.persistInFlight = persistLocalDb(db)
-        .catch(() => {})
-        .finally(() => {
-          state.persistInFlight = null;
-        });
+  await enqueueLocal(async () => {
+    if (state.persistInFlight) {
       await state.persistInFlight;
     }
-    return;
-  }
-  state.persistInFlight = persistLocalDb(db)
-    .catch(() => {})
-    .finally(() => {
-      state.persistInFlight = null;
-    });
-  await state.persistInFlight;
-  if (state.dirty) {
+    if (!state.dirty && state.lastPersistAt) {
+      // Still allow forced flush after create/join (caller sets dirty).
+    }
     state.persistInFlight = persistLocalDb(db)
       .catch(() => {})
       .finally(() => {
         state.persistInFlight = null;
       });
     await state.persistInFlight;
-  }
+  });
 }
 
 export async function flushRoomPersist(): Promise<void> {
   if (!state.local) return;
   try {
     const db = await state.local;
+    state.dirty = true;
     await flushPersist(db);
   } catch {
     // Ignore
@@ -261,7 +299,6 @@ async function applyMigrations(db: PGlite): Promise<void> {
 }
 
 async function startLocal(): Promise<PGlite> {
-  // Prefer restoring a prior dump so serverless cold starts keep rooms.
   const dump = await loadDumpFromBlob();
   let db: PGlite;
   if (dump) {
@@ -276,9 +313,28 @@ async function startLocal(): Promise<PGlite> {
     await applyMigrations(db);
   }
 
-  // Ensure schema is current even when restoring an older dump
   await db.exec(IDEMPOTENT_SCHEMA_SQL);
   return db;
+}
+
+function isHotPathMutation(sqlText: string): boolean {
+  // Sky spam + last_seen heartbeats must not trigger Blob I/O.
+  return (
+    /\bsky_events\b/.test(sqlText) ||
+    /\blast_seen_at\b/.test(sqlText) ||
+    /\bholding_since\b/.test(sqlText) ||
+    /\bp1_steer\b/.test(sqlText) ||
+    /\bp2_steer\b/.test(sqlText) ||
+    /\bdrift_/.test(sqlText)
+  );
+}
+
+function isStructuralMutation(sqlText: string): boolean {
+  // Room create / invite / session / choice changes — idle-persist these.
+  return (
+    /\brooms\b/.test(sqlText) ||
+    /\bparticipants\b/.test(sqlText)
+  );
 }
 
 export async function sql<T = Record<string, unknown>>(
@@ -298,19 +354,35 @@ export async function sql<T = Record<string, unknown>>(
     throw error;
   });
   const db = await state.local;
-  const result = await db.query<T>(text, params);
 
-  // Persist after mutations so firework/lantern spam survives instance recycle.
-  // Debounced only — call flushRoomPersist() from join/create paths for durability.
-  const trimmed = text.trimStart().toLowerCase();
-  if (
-    trimmed.startsWith("insert") ||
-    trimmed.startsWith("update") ||
-    trimmed.startsWith("delete") ||
-    trimmed.startsWith("with")
-  ) {
-    schedulePersist(db);
-  }
+  return enqueueLocal(async () => {
+    const result = await db.query<T>(text, params);
+    const trimmed = text.trimStart().toLowerCase();
+    const isMutation =
+      trimmed.startsWith("insert") ||
+      trimmed.startsWith("update") ||
+      trimmed.startsWith("delete") ||
+      trimmed.startsWith("with");
 
-  return result.rows;
+    if (isMutation && isStructuralMutation(trimmed) && !isHotPathMutation(trimmed)) {
+      // Idle-debounce only — never dump inline with firework/builder bursts.
+      scheduleIdlePersist(db);
+    } else if (isMutation) {
+      // Hot path: mark dirty for a later idle dump, but do not reschedule aggressively.
+      state.dirty = true;
+      state.lastMutationAt = Date.now();
+      if (!state.persistTimer && hasBlobToken()) {
+        scheduleIdlePersist(db);
+      } else if (state.persistTimer) {
+        // Push idle window out while spam continues
+        clearTimeout(state.persistTimer);
+        state.persistTimer = setTimeout(() => {
+          state.persistTimer = null;
+          void maybeIdlePersist(db);
+        }, PERSIST_IDLE_MS);
+      }
+    }
+
+    return result.rows;
+  });
 }

@@ -80,6 +80,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
   const authFailStreakRef = useRef(0);
   const hadReadySessionRef = useRef(false);
+  const lastSoftRejoinAtRef = useRef(0);
 
   // Clean lightweight personal wish input & tactile Krathong Builder tray
   const [wishDraft, setWishDraft] = useState("");
@@ -460,15 +461,31 @@ export function RoomClient({ roomId }: { roomId: string }) {
           credentials: "include",
         });
         if (res.status === 401) {
-          // Do not immediately kick a mid-session room after firework/lantern use.
-          // PR #1 redeploy made ephemeral PGlite cold-starts more visible; tolerate blips.
+          // Mid-session 401s are usually a brief wrong-instance blip. Soft-rejoin
+          // silently; only surface the banner after a sustained streak so normal
+          // use stays quiet (user reported the banner flashing too often).
           if (hadReadySessionRef.current || isBackgroundPoll) {
             authFailStreakRef.current += 1;
-            setReconnectNotice("กำลังเชื่อมต่อห้องใหม่...");
-            const rejoined = await trySoftRejoin();
-            if (rejoined) return true;
-            if (authFailStreakRef.current < 5) {
-              // Keep UI in ready; next poll retries
+            const streak = authFailStreakRef.current;
+            if (streak >= 6) {
+              setReconnectNotice("กำลังเชื่อมต่อห้องใหม่...");
+            }
+            const now = Date.now();
+            const rejoinCooldownMs = 4000;
+            if (
+              streak === 1 ||
+              now - lastSoftRejoinAtRef.current >= rejoinCooldownMs
+            ) {
+              lastSoftRejoinAtRef.current = now;
+              const rejoined = await trySoftRejoin();
+              if (rejoined) return true;
+            }
+            if (streak < 30) {
+              return false;
+            }
+            // Still have invite? Stay ready forever rather than join-gate mid-session.
+            if (readStoredInvite() && readStoredNickname()) {
+              authFailStreakRef.current = 10;
               return false;
             }
           }
