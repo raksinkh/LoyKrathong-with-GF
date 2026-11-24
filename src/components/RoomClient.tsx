@@ -160,12 +160,21 @@ export function RoomClient({ roomId }: { roomId: string }) {
         window.sessionStorage.setItem(`lk_invite_${roomId}`, saved);
       }
       if (urlInvite) {
+        setStoredInviteSecret(urlInvite);
         window.localStorage.setItem(`lk_invite_${roomId}`, urlInvite);
         window.sessionStorage.setItem(`lk_invite_${roomId}`, urlInvite);
+      }
+      const savedNick =
+        window.sessionStorage.getItem(`lk_nick_${roomId}`) ||
+        window.localStorage.getItem(`lk_nick_${roomId}`);
+      if (savedNick && !joinNickname) {
+        setJoinNickname(savedNick);
       }
     } catch {
       // Ignore private mode errors
     }
+    // Prefill once per room; joinNickname omitted so typing is not reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/room invite hydrate only
   }, [roomId, urlInvite]);
 
   // iOS/Android: unlock AudioContext on first user gesture
@@ -410,6 +419,15 @@ export function RoomClient({ roomId }: { roomId: string }) {
         }),
       });
       if (!res.ok) return false;
+      try {
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.localStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.sessionStorage.setItem(`lk_nick_${roomId}`, nickname);
+        window.localStorage.setItem(`lk_nick_${roomId}`, nickname);
+        setStoredInviteSecret(inviteSecret);
+      } catch {
+        // Ignore
+      }
       // Join only sets the cookie; re-fetch room state with the new session.
       const poll = await fetch(`/api/rooms/${roomId}?_t=${Date.now()}`, {
         method: "GET",
@@ -572,6 +590,15 @@ export function RoomClient({ roomId }: { roomId: string }) {
       return;
     }
 
+    // After auth, invite is stripped from the URL — still join with localStorage copy.
+    const inviteSecret = readStoredInvite();
+    if (!inviteSecret) {
+      setJoinError(
+        "ลิงก์เชิญไม่ถูกต้อง กรุณาขอลิงก์ใหม่จากคนพิเศษของคุณ",
+      );
+      return;
+    }
+
     setJoining(true);
     setJoinError(null);
     soundEngine.unlock();
@@ -585,7 +612,7 @@ export function RoomClient({ roomId }: { roomId: string }) {
           "X-Requested-With": "fetch",
         },
         body: JSON.stringify({
-          inviteSecret: urlInvite,
+          inviteSecret,
           nickname: trimmed,
         }),
       });
@@ -603,10 +630,9 @@ export function RoomClient({ roomId }: { roomId: string }) {
       try {
         window.sessionStorage.setItem(`lk_nick_${roomId}`, trimmed);
         window.localStorage.setItem(`lk_nick_${roomId}`, trimmed);
-        if (urlInvite) {
-          window.sessionStorage.setItem(`lk_invite_${roomId}`, urlInvite);
-          window.localStorage.setItem(`lk_invite_${roomId}`, urlInvite);
-        }
+        window.sessionStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        window.localStorage.setItem(`lk_invite_${roomId}`, inviteSecret);
+        setStoredInviteSecret(inviteSecret);
       } catch {
         // Ignore
       }

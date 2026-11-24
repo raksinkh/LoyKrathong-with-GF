@@ -87,36 +87,42 @@ class MoonlightSoundEngine {
 
   /**
    * Call from any user-gesture handler. Safe to call repeatedly.
-   * Unlocks AudioContext for SFX.
+   * Unlocks AudioContext for SFX (music/BGM is intentionally not played).
    */
   public unlock(): void {
     if (typeof window === "undefined") return;
     this.bindGestureUnlock();
 
-    if (!this.unlockPromise) {
-      this.unlockPromise = (async () => {
-        const ctx = this.ensureAudioContext();
-        if (ctx) {
-          this.kickSilentBuffer(ctx);
-          await this.resumeContext(ctx);
-          this.kickSilentBuffer(ctx);
-        }
-        this.unlocked = true;
-      })().finally(() => {
-        this.unlockPromise = null;
-      });
+    const ctx = this.ensureAudioContext();
+    if (!ctx) return;
+
+    // Sync kick + resume on the gesture stack — required for iOS / in-app browsers
+    // so firework/lantern SFX can play on the same tap that unlocks audio.
+    this.kickSilentBuffer(ctx);
+    if (ctx.state === "suspended") {
+      const resume = ctx.resume();
+      if (!this.unlockPromise) {
+        this.unlockPromise = resume
+          .then(() => {
+            this.kickSilentBuffer(ctx);
+            this.unlocked = true;
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.unlockPromise = null;
+          });
+      }
     } else {
-      void this.unlockPromise;
+      this.unlocked = true;
     }
   }
 
   private ensureContext(): AudioContext | null {
     if (this.muted) return null;
+    // Creating/resuming from a play path still helps after unlock() on older WebViews
+    this.unlock();
     const ctx = this.ensureAudioContext();
-    if (!ctx) return null;
-    if (ctx.state === "suspended") {
-      void this.resumeContext(ctx);
-    }
+    if (!ctx || this.muted) return null;
     return ctx;
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { sql } from "./db";
+import { flushRoomPersist, sql } from "./db";
 import {
   ACCENT_OPTIONS,
   AccentStyle,
@@ -174,6 +174,7 @@ export async function createRoomWithCreator(nickname: string): Promise<{
     [participantId, roomId, nickname, sessionTokenHash],
   );
 
+  await flushRoomPersist();
   return { roomId, inviteSecret, participantId, sessionToken };
 }
 
@@ -247,6 +248,7 @@ export async function joinRoomWithInvite(
        where id = $1 and room_id = $2`,
       [nickMatch.id, roomId, sessionTokenHash, nickname],
     );
+    await flushRoomPersist();
     return {
       ok: true,
       participantId: nickMatch.id,
@@ -306,6 +308,7 @@ export async function joinRoomWithInvite(
     [roomId],
   );
 
+  await flushRoomPersist();
   return {
     ok: true,
     participantId,

@@ -157,9 +157,29 @@ async function loadDumpFromBlob(): Promise<File | Blob | null> {
   }
 }
 
+async function roomCount(db: PGlite): Promise<number> {
+  try {
+    const result = await db.query<{ count: string | number }>(
+      `select count(*)::int as count from rooms`,
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 async function persistLocalDb(db: PGlite): Promise<void> {
   if (!hasBlobToken()) return;
   try {
+    // Never clobber a good Blob dump with an empty cold-start DB.
+    const localRooms = await roomCount(db);
+    if (localRooms === 0) {
+      const existing = await loadDumpFromBlob();
+      if (existing) {
+        state.dirty = false;
+        return;
+      }
+    }
     const dump = await db.dumpDataDir("gzip");
     await put(PGLITE_BLOB_PATH, dump, {
       access: "private",
@@ -180,14 +200,53 @@ function schedulePersist(db: PGlite): void {
   if (state.persistTimer) clearTimeout(state.persistTimer);
   state.persistTimer = setTimeout(() => {
     state.persistTimer = null;
-    if (state.persistInFlight) return;
+    void flushPersist(db);
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/** Awaitable flush so join/sky mutations land in Blob before the response returns. */
+async function flushPersist(db: PGlite): Promise<void> {
+  if (!hasBlobToken()) return;
+  if (state.persistTimer) {
+    clearTimeout(state.persistTimer);
+    state.persistTimer = null;
+  }
+  if (state.persistInFlight) {
+    await state.persistInFlight;
+    if (state.dirty) {
+      state.persistInFlight = persistLocalDb(db)
+        .catch(() => {})
+        .finally(() => {
+          state.persistInFlight = null;
+        });
+      await state.persistInFlight;
+    }
+    return;
+  }
+  state.persistInFlight = persistLocalDb(db)
+    .catch(() => {})
+    .finally(() => {
+      state.persistInFlight = null;
+    });
+  await state.persistInFlight;
+  if (state.dirty) {
     state.persistInFlight = persistLocalDb(db)
       .catch(() => {})
       .finally(() => {
         state.persistInFlight = null;
-        if (state.dirty) schedulePersist(db);
       });
-  }, PERSIST_DEBOUNCE_MS);
+    await state.persistInFlight;
+  }
+}
+
+export async function flushRoomPersist(): Promise<void> {
+  if (!state.local) return;
+  try {
+    const db = await state.local;
+    await flushPersist(db);
+  } catch {
+    // Ignore
+  }
 }
 
 async function applyMigrations(db: PGlite): Promise<void> {
@@ -241,7 +300,8 @@ export async function sql<T = Record<string, unknown>>(
   const db = await state.local;
   const result = await db.query<T>(text, params);
 
-  // Persist after mutations so firework/lantern spam survives instance recycle
+  // Persist after mutations so firework/lantern spam survives instance recycle.
+  // Debounced only — call flushRoomPersist() from join/create paths for durability.
   const trimmed = text.trimStart().toLowerCase();
   if (
     trimmed.startsWith("insert") ||
